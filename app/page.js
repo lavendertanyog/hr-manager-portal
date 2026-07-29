@@ -74,13 +74,9 @@ export default function Home() {
       } else {
         const user = { ...payload.data, full_name: deriveNameFromEmail(email.trim().toLowerCase()) };
         const role = String(user.user_role || '').toLowerCase();
-        if (role === 'account_manager') {
-          setError('Account Manager users should sign in to the separate Account Manager portal.');
-          setLoading(false);
-          return;
-        }
-        if (!['manager', 'hr'].includes(role)) {
-          setError('This portal is for Manager accounts only.');
+        const roles = Array.isArray(user.user_roles) ? user.user_roles.map((r) => String(r).toLowerCase()) : [role];
+        if (!roles.includes('manager')) {
+          setError('This portal is for Manager accounts only. If you also have an HR or Account Manager role, please use the corresponding portal.');
           setLoading(false);
           return;
         }

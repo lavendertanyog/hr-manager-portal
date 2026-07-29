@@ -38,6 +38,7 @@ export default function AttendancePage() {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
   const [managerId, setManagerId] = useState('');
+  const [expandedId, setExpandedId] = useState(null);
 
   const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
@@ -103,6 +104,8 @@ export default function AttendancePage() {
       hours: row.daily_worktime_hours,
       ot_hours: row.ot_hours_accrued,
       status: row.status,
+      entry_type: row.entry_type,
+      remark: row.remark,
     })));
     if (csv) downloadCsv(`attendance-${new Date().toISOString().slice(0, 10)}.csv`, csv);
   };
@@ -200,48 +203,61 @@ export default function AttendancePage() {
         </div>
       </div>
 
-      {/* Table */}
+      {/* Table — simplified summary, click a row for full detail */}
       <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm">
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-slate-200 bg-slate-50 text-slate-500 uppercase tracking-[0.22em] text-[0.65rem]">
             <tr>
               <th className="px-4 py-3">Employee</th>
-              <th className="px-4 py-3">Project</th>
-              <th className="px-4 py-3">Clock In</th>
-              <th className="px-4 py-3">Clock Out</th>
-              <th className="px-4 py-3">Location</th>
-              <th className="px-4 py-3">Travel</th>
+              <th className="px-4 py-3">Clock In → Out</th>
               <th className="px-4 py-3">Hours</th>
-              <th className="px-4 py-3">OT</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Details</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {loading ? (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">Loading attendance logs…</td></tr>
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">Loading attendance logs…</td></tr>
             ) : filteredRows.length === 0 ? (
-              <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">No records match the selected filters.</td></tr>
-            ) : filteredRows.map((row) => (
-              <tr key={row.attendance_id} className="hover:bg-slate-50/50">
-                <td className="px-4 py-3 font-medium text-slate-800">{row.full_name}</td>
-                <td className="px-4 py-3 text-slate-700">{row.project_code || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{formatDt(row.clock_in_time)}</td>
-                <td className="px-4 py-3 text-slate-600">
-                  {row.clock_out_time ? formatDt(row.clock_out_time) : <span className="text-green-600 font-semibold text-xs">ACTIVE</span>}
-                </td>
-                <td className="px-4 py-3 text-slate-600">{row.location_name ? `${row.location_name}${row.country_code ? ` (${row.country_code})` : ''}` : '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{row.travel_mode || '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{row.daily_worktime_hours ?? '—'}</td>
-                <td className="px-4 py-3 text-slate-600">{row.ot_hours_accrued ?? '—'}</td>
-                <td className="px-4 py-3">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                    row.status === 'ACTIVE' ? 'bg-green-100 text-green-700'
-                    : row.status === 'CLOSED' ? 'bg-slate-100 text-slate-600'
-                    : 'bg-red-100 text-red-600'
-                  }`}>{row.status || 'UNKNOWN'}</span>
-                </td>
-              </tr>
-            ))}
+              <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No records match the selected filters.</td></tr>
+            ) : filteredRows.map((row) => {
+              const isOpen = expandedId === row.attendance_id;
+              return (
+                <React.Fragment key={row.attendance_id}>
+                  <tr
+                    className="cursor-pointer hover:bg-slate-50/50"
+                    onClick={() => setExpandedId(isOpen ? null : row.attendance_id)}
+                  >
+                    <td className="px-4 py-3 font-medium text-slate-800">{row.full_name}</td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {formatDt(row.clock_in_time)} → {row.clock_out_time ? formatDt(row.clock_out_time) : <span className="text-green-600 font-semibold text-xs">ACTIVE</span>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{row.daily_worktime_hours ?? '—'}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        row.status === 'ACTIVE' ? 'bg-green-100 text-green-700'
+                        : row.status === 'CLOSED' ? 'bg-slate-100 text-slate-600'
+                        : 'bg-red-100 text-red-600'
+                      }`}>{row.status || 'UNKNOWN'}</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-400">{isOpen ? '▲' : '▼'}</td>
+                  </tr>
+                  {isOpen && (
+                    <tr className="bg-slate-50/60">
+                      <td colSpan={5} className="px-4 py-4">
+                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
+                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Project</p><p className="text-slate-700 mt-0.5">{row.project_code || (row.entry_type === 'GENERAL' ? 'General (non-project)' : '—')}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Location</p><p className="text-slate-700 mt-0.5">{row.location_name ? `${row.location_name}${row.country_code ? ` (${row.country_code})` : ''}` : '—'}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Travel Mode</p><p className="text-slate-700 mt-0.5">{row.travel_mode || '—'}</p></div>
+                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">OT Hours</p><p className="text-slate-700 mt-0.5">{row.ot_hours_accrued ?? '—'}</p></div>
+                          <div className="sm:col-span-2 lg:col-span-4"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Remark</p><p className="text-slate-700 mt-0.5">{row.remark || '—'}{row.is_manual_entry ? ' (manual entry)' : ''}</p></div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
+              );
+            })}
           </tbody>
         </table>
       </div>

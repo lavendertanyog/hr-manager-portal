@@ -25,13 +25,17 @@ const NAV = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Team Management', href: '/team' },
   { label: 'Approvals', href: '/approvals' },
-  { label: 'Project Codes', href: '/project-codes' },
+  { label: 'Progress', href: '/project-codes' },
   { label: 'Attendance', href: '/attendance' },
 ];
 
 const SIDEBAR_PATH_PREFIXES = ['/dashboard', '/team', '/approvals', '/project-codes', '/attendance'];
 
-export default function SidebarClient() {
+// Module-level: resets on every full page reload so role revocations are
+// enforced immediately on reload while still throttled during in-page navigation.
+let _mgr_lastVerified = 0;
+
+export default function SidebarClient({ isDrawer = false, onClose }) {
   const pathname = usePathname();
   const router = useRouter();
   const [user, setUser] = useState(null);
@@ -43,6 +47,52 @@ export default function SidebarClient() {
       if (stored) setUser(JSON.parse(stored));
     } catch {}
   }, [pathname]);
+
+  // Re-verify roles against DB on each navigation (always on page load, throttled to 3 min for in-page nav)
+  useEffect(() => {
+    const stored = sessionStorage.getItem('hr_portal_user');
+    if (!stored) return;
+    const u = JSON.parse(stored);
+    if (!u?.user_id) return;
+    if (Date.now() - _mgr_lastVerified < 3 * 60 * 1000) return;
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
+    fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`)
+      .then((r) => r.json())
+      .then((payload) => {
+        if (!payload.success) { handleLogout(); return; }
+        const { user_roles, user_role, account_status } = payload.data;
+        const roles = Array.isArray(user_roles) && user_roles.length > 0 ? user_roles : [user_role].filter(Boolean);
+        const active = String(account_status || 'active').toLowerCase() === 'active';
+        const hasAccess = active && (roles.includes('manager'));
+        _mgr_lastVerified = Date.now();
+        if (!hasAccess) handleLogout();
+      })
+      .catch(() => {});
+  }, [pathname]);
+
+  // Also check every 60 seconds while the user is idle (catches revocation without navigation)
+  useEffect(() => {
+    const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
+    const id = setInterval(() => {
+      const stored = sessionStorage.getItem('hr_portal_user');
+      if (!stored) return;
+      const u = JSON.parse(stored);
+      if (!u?.user_id) return;
+      fetch(`${API_BASE}/api/v1/auth/verify-session?userId=${u.user_id}`)
+        .then((r) => r.json())
+        .then((payload) => {
+          if (!payload.success) { handleLogout(); return; }
+          const { user_roles, user_role, account_status } = payload.data;
+          const roles = Array.isArray(user_roles) && user_roles.length > 0 ? user_roles : [user_role].filter(Boolean);
+          const active = String(account_status || 'active').toLowerCase() === 'active';
+          const hasAccess = active && (roles.includes('manager'));
+          _mgr_lastVerified = Date.now();
+          if (!hasAccess) handleLogout();
+        })
+        .catch(() => {});
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleLogout = () => {
     sessionStorage.removeItem('hr_portal_user');
@@ -60,11 +110,26 @@ export default function SidebarClient() {
     .map((n) => n[0].toUpperCase())
     .join('') || 'M';
 
+  const sidebarStyle = isDrawer
+    ? { width: 280, minHeight: '100vh', position: 'fixed', left: 0, top: 0, zIndex: 50, boxShadow: '0 20px 60px rgba(15,23,42,0.18)' }
+    : { width: 240, minHeight: '100vh', borderRight: '1px solid #e5e7eb' };
+
   return (
     <aside
       className="flex flex-col bg-white"
-      style={{ width: 240, minHeight: '100vh', borderRight: '1px solid #e5e7eb' }}
+      style={sidebarStyle}
     >
+      {isDrawer && (
+        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+          <span className="text-sm font-semibold text-slate-900">Navigation</span>
+          <button type="button" onClick={onClose} className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      )}
       {/* Logo */}
       <div className="flex items-center justify-center" style={{ padding: '28px 24px 20px' }}>
         {!logoMissing ? (
@@ -123,9 +188,7 @@ export default function SidebarClient() {
             <p className="text-sm font-semibold truncate" style={{ color: '#111827', lineHeight: 1.3 }}>
               {displayName}
             </p>
-            <p className="text-xs truncate" style={{ color: '#6b7280', marginTop: 1 }}>
-              {formatRole(user?.user_role)}
-            </p>
+            <p className="text-xs truncate" style={{ color: '#6b7280', marginTop: 1 }}>Manager</p>
           </div>
 
           {/* Logout button */}
