@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import Image from 'next/image';
 
 function deriveNameFromEmail(email) {
   return String(email || '')
@@ -25,7 +24,6 @@ export default function ManagerDashboard() {
   const [allocation, setAllocation] = useState({ userId: '', projectCode: '', hours: '' });
   const [allocSubmitting, setAllocSubmitting] = useState(false);
   const [allocMessage, setAllocMessage] = useState('');
-  const [logoMissing, setLogoMissing] = useState(false);
   const [sessionUser, setSessionUser] = useState(null);
 
   const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
@@ -165,30 +163,10 @@ export default function ManagerDashboard() {
 
   return (
     <div className="p-8">
-      <div className="mb-10 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Manager Dashboard</p>
-          <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {managerName}</h1>
-          <p className="mt-2 text-sm text-slate-500">Monitor approvals, project codes, and team workload in one place.</p>
-        </div>
-        <div className="px-2 py-1">
-          {!logoMissing ? (
-            <Image
-              src="/nextan-logo.png"
-              alt="Nextan"
-              width={140}
-              height={46}
-              className="h-auto w-full max-w-[140px] object-contain"
-              priority
-              onError={() => setLogoMissing(true)}
-            />
-          ) : (
-            <div className="text-[#48558C]">
-              <p className="text-xs uppercase tracking-[0.28em] text-[#163EAF]">Nextan</p>
-              <p className="mt-2 text-base font-semibold text-[#2D376B]">Team activity and approvals</p>
-            </div>
-          )}
-        </div>
+      <div className="mb-10">
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Manager Dashboard</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {managerName}</h1>
+        <p className="mt-2 text-sm text-slate-500">Monitor approvals, project codes, and team workload in one place.</p>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3 mb-10">
