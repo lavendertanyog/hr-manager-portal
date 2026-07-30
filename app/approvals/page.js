@@ -1,11 +1,24 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
 
 function formatDateOnly(d) {
   if (!d) return '—';
   return String(d).slice(0, 10);
+}
+
+function formatDateTime(d) {
+  if (!d) return null;
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function daysBetween(start, end) {
+  if (!start || !end) return null;
+  const s = new Date(String(start).slice(0, 10));
+  const e = new Date(String(end).slice(0, 10));
+  const diff = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+  return diff > 0 ? diff : null;
 }
 
 function statusBadge(status) {
@@ -28,8 +41,22 @@ export default function ApprovalsPage() {
   const [reviewModal, setReviewModal] = useState(null); // { item, type, isHistory }
   const [reviewAction, setReviewAction] = useState('APPROVED');
   const [reviewRemark, setReviewRemark] = useState('');
+  const [reviewError, setReviewError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [feedback, setFeedback] = useState('');
+  const [balanceMap, setBalanceMap] = useState({}); // user_id -> { remainingDays, totalDays }
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [bulkSubmitting, setBulkSubmitting] = useState(false);
+  const [toast, setToast] = useState(null);
+  const toastTimerRef = useRef(null);
+
+  // History filters
+  const [historyCategory, setHistoryCategory] = useState('ALL'); // ALL | LEAVE | BUDGET
+  const [historyStatus, setHistoryStatus] = useState('ALL'); // ALL | APPROVED | REJECTED
+  const [historySearch, setHistorySearch] = useState('');
+  const [historyDateFrom, setHistoryDateFrom] = useState('');
+  const [historyDateTo, setHistoryDateTo] = useState('');
+
   const backendBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
 
   useEffect(() => {
@@ -73,47 +100,162 @@ export default function ApprovalsPage() {
     if (activeTab === 'HISTORY') loadHistory();
   }, [activeTab, managerId, loadPending, loadHistory]);
 
-  const openReviewModal = (item, type, isHistory) => {
+  useEffect(() => { setSelectedIds([]); }, [activeTab]);
+
+  // Fetch leave balance for each pending applicant so the card/modal can show remaining days context
+  useEffect(() => {
+    const uniqueUserIds = [...new Set(leaveRecords.map((r) => r.user_id).filter(Boolean))];
+    const missing = uniqueUserIds.filter((id) => !(id in balanceMap));
+    if (missing.length === 0) return;
+    Promise.all(missing.map((id) =>
+      axios.get(`${backendBaseUrl}/api/v1/leave/balance/${id}`).then((r) => [id, r.data?.data]).catch(() => [id, null])
+    )).then((pairs) => {
+      setBalanceMap((prev) => {
+        const next = { ...prev };
+        pairs.forEach(([id, val]) => { next[id] = val; });
+        return next;
+      });
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leaveRecords]);
+
+  const showToast = (message, onUndo) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, onUndo });
+    toastTimerRef.current = setTimeout(() => setToast(null), 6000);
+  };
+
+  const openReviewModal = (item, type, isHistory, presetAction) => {
     setReviewModal({ item, type, isHistory });
-    setReviewAction(isHistory ? (item.workflow_status || item.manager_status || 'APPROVED') : 'APPROVED');
+    setReviewAction(presetAction || (isHistory ? (item.workflow_status || item.manager_status || item.status || 'APPROVED') : 'APPROVED'));
     setReviewRemark(isHistory ? (item.reviewer_remarks || '') : '');
+    setReviewError('');
     setFeedback('');
+  };
+
+  const runReview = async (type, id, action, remarks) => {
+    if (type === 'BUDGET') {
+      const budgetAction = action === 'APPROVED' ? 'MANAGER_APPROVED' : action;
+      await axios.patch(`${backendBaseUrl}/api/v1/projects/budget-request/review`, {
+        requestId: id, reviewerId: managerId, action: budgetAction, reviewerRemarks: remarks || undefined,
+      });
+    } else {
+      await axios.patch(`${backendBaseUrl}/api/v1/leave/review`, {
+        leaveId: id, reviewerId: managerId, action, reviewerRemarks: remarks || undefined,
+      });
+    }
+  };
+
+  const runReReview = async (id, action, remarks) => {
+    await axios.patch(`${backendBaseUrl}/api/v1/leave/re-review`, {
+      leaveId: id, reviewerId: managerId, action, reviewerRemarks: remarks,
+    });
   };
 
   const submitModalReview = async () => {
     if (!reviewModal) return;
+    // Mandatory reason: rejecting a request, or editing any past decision, requires a written reason
+    if ((reviewAction === 'REJECTED' && !reviewModal.isHistory) || reviewModal.isHistory) {
+      if (!reviewRemark.trim()) {
+        setReviewError(reviewModal.isHistory
+          ? 'A reason is required when changing a past decision.'
+          : 'Please provide a reason for rejecting this request.');
+        return;
+      }
+    }
     setSubmitting(true);
-    setFeedback('');
+    setFeedback(''); setReviewError('');
     try {
-      if (reviewModal.type === 'BUDGET') {
-        const budgetAction = reviewAction === 'APPROVED' ? 'MANAGER_APPROVED' : reviewAction;
-        await axios.patch(`${backendBaseUrl}/api/v1/projects/budget-request/review`, {
-          requestId: reviewModal.item.request_id,
-          reviewerId: managerId,
-          action: budgetAction,
-          reviewerRemarks: reviewRemark.trim() || undefined,
-        });
+      const id = reviewModal.type === 'BUDGET' ? reviewModal.item.request_id : reviewModal.item.leave_id;
+      const name = reviewModal.type === 'BUDGET' ? (reviewModal.item.project_name || reviewModal.item.project_code) : reviewModal.item.full_name;
+      if (reviewModal.isHistory) {
+        await runReReview(id, reviewAction, reviewRemark.trim());
       } else {
-        const endpoint = reviewModal.isHistory ? '/api/v1/leave/re-review' : '/api/v1/leave/review';
-        await axios.patch(`${backendBaseUrl}${endpoint}`, {
-          leaveId: reviewModal.item.leave_id,
-          reviewerId: managerId,
-          action: reviewAction,
-          reviewerRemarks: reviewRemark.trim() || undefined,
-        });
+        await runReview(reviewModal.type, id, reviewAction, reviewRemark.trim());
       }
       setFeedback('Done! Staff has been notified.');
       setTimeout(() => {
         setReviewModal(null);
         loadPending();
         if (reviewModal.isHistory) loadHistory();
-      }, 1200);
+        if (!reviewModal.isHistory) {
+          const opposite = reviewAction === 'APPROVED' ? 'REJECTED' : 'APPROVED';
+          showToast(
+            `${reviewAction === 'APPROVED' ? 'Approved' : 'Rejected'} ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name}.`,
+            () => { runReview(reviewModal.type, id, opposite, 'Reverted').then(() => { loadPending(); setToast(null); }); }
+          );
+        }
+      }, 900);
     } catch (err) {
       setFeedback(err.response?.data?.error || 'Action failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
   };
+
+  const toggleSelected = (id) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  };
+
+  const currentPendingList = activeTab === 'LEAVE' ? leaveRecords : budgetRecords;
+  const currentIdOf = (item) => activeTab === 'LEAVE' ? item.leave_id : item.request_id;
+  const allSelected = currentPendingList.length > 0 && selectedIds.length === currentPendingList.length;
+
+  const handleBulkApprove = async () => {
+    if (selectedIds.length === 0) return;
+    const confirmed = window.confirm(`Approve ${selectedIds.length} selected ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request(s)?`);
+    if (!confirmed) return;
+    setBulkSubmitting(true);
+    try {
+      for (const id of selectedIds) {
+        await runReview(activeTab, id, 'APPROVED', undefined);
+      }
+      showToast(`Approved ${selectedIds.length} request(s).`);
+      setSelectedIds([]);
+      await loadPending();
+    } catch (err) {
+      setFeedback(err.response?.data?.error || 'Bulk approval failed partway through — please review remaining items.');
+    } finally {
+      setBulkSubmitting(false);
+    }
+  };
+
+  // ─── Unified, filterable history list (leave + budget) ───
+  const combinedHistory = useMemo(() => {
+    const leave = historyRecords.map((item) => ({
+      type: 'LEAVE',
+      key: `leave-${item.leave_id}`,
+      raw: item,
+      title: item.full_name,
+      status: item.workflow_status,
+      sortDate: item.updated_at || item.created_at,
+    }));
+    const budget = budgetHistoryRecords.map((item) => ({
+      type: 'BUDGET',
+      key: `budget-${item.request_id}`,
+      raw: item,
+      title: item.project_name || item.project_code,
+      status: item.manager_status || item.status,
+      sortDate: item.reviewed_at || item.created_at,
+    }));
+    return [...leave, ...budget].sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
+  }, [historyRecords, budgetHistoryRecords]);
+
+  const filteredHistory = combinedHistory.filter((row) => {
+    if (historyCategory !== 'ALL' && row.type !== historyCategory) return false;
+    if (historyStatus !== 'ALL' && String(row.status || '').toUpperCase() !== historyStatus) return false;
+    const q = historySearch.trim().toLowerCase();
+    if (q) {
+      const name = row.type === 'LEAVE' ? row.raw.full_name : (row.raw.requester_name || row.raw.requester_email || '');
+      if (!String(name || '').toLowerCase().includes(q)) return false;
+    }
+    if (historyDateFrom && new Date(row.sortDate) < new Date(historyDateFrom)) return false;
+    if (historyDateTo) {
+      const end = new Date(historyDateTo); end.setHours(23, 59, 59, 999);
+      if (new Date(row.sortDate) > end) return false;
+    }
+    return true;
+  });
 
   return (
     <div className="p-8">
@@ -139,87 +281,92 @@ export default function ApprovalsPage() {
           >
             {t.label}
             {t.count > 0 && (
-              <span className={`inline-flex items-center justify-center rounded-full text-xs w-5 h-5 ${activeTab === t.id ? 'bg-red-500 text-white' : 'bg-red-500 text-white'}`}>{t.count}</span>
+              <span className="inline-flex items-center justify-center rounded-full text-xs w-5 h-5 bg-red-500 text-white">{t.count}</span>
             )}
           </button>
         ))}
       </div>
 
-      {/* ─── LEAVE REQUESTS ─── */}
-      {activeTab === 'LEAVE' && (
+      {/* ─── LEAVE / BUDGET (pending) ─── */}
+      {(activeTab === 'LEAVE' || activeTab === 'BUDGET') && (
         <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
+          <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Pending Approvals</p>
               <h2 className="mt-1 text-2xl font-semibold text-slate-950">Review inbox</h2>
             </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">Live data</span>
-          </div>
-          <div className="space-y-3">
-            {leaveRecords.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">No pending leave requests.</div>
-            ) : leaveRecords.map((item) => (
-              <div key={item.leave_id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Leave Request</p>
-                    <h3 className="mt-1 text-lg font-semibold text-slate-900">{item.full_name}</h3>
-                    <p className="mt-1 text-sm text-slate-500">{item.category} • START DATE: {formatDateOnly(item.start_date)} - END DATE: {formatDateOnly(item.end_date)}</p>
-                    {item.is_late_submission && (
-                      <span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-600">Late submission</span>
-                    )}
-                  </div>
-                  <div className="flex gap-2.5">
-                    <button
-                      onClick={() => openReviewModal(item, 'LEAVE', false)}
-                      className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F]"
-                    >Approve</button>
-                    <button
-                      onClick={() => openReviewModal(item, 'LEAVE', false)}
-                      className="rounded-2xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >Reject</button>
-                  </div>
-                </div>
+            {currentPendingList.length > 0 && (
+              <div className="flex items-center gap-3">
+                <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
+                  <input type="checkbox" checked={allSelected}
+                    onChange={(e) => setSelectedIds(e.target.checked ? currentPendingList.map(currentIdOf) : [])}
+                    className="rounded border-slate-300" />
+                  Select All
+                </label>
+                <button type="button" onClick={handleBulkApprove} disabled={selectedIds.length === 0 || bulkSubmitting}
+                  className="rounded-2xl bg-[#1540A8] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-[#12378F]">
+                  {bulkSubmitting ? 'Approving…' : `Bulk Approve${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
+                </button>
               </div>
-            ))}
+            )}
           </div>
-        </div>
-      )}
 
-      {/* ─── BUDGET ESCALATIONS ─── */}
-      {activeTab === 'BUDGET' && (
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between mb-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Pending Approvals</p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">Review inbox</h2>
-            </div>
-            <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-500">Live data</span>
-          </div>
           <div className="space-y-3">
-            {budgetRecords.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">No pending budget requests.</div>
-            ) : budgetRecords.map((item) => (
-              <div key={item.request_id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-center justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Budget Request</p>
-                    <h3 className="mt-1 text-lg font-semibold text-slate-900">{item.project_name || item.project_code}</h3>
-                    <p className="mt-1 text-sm text-slate-500">{item.project_code} • {item.requested_hours} hrs requested</p>
-                  </div>
-                  <div className="flex gap-2.5">
-                    <button
-                      onClick={() => openReviewModal(item, 'BUDGET', false)}
-                      className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F]"
-                    >Approve</button>
-                    <button
-                      onClick={() => openReviewModal(item, 'BUDGET', false)}
-                      className="rounded-2xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
-                    >Reject</button>
+            {currentPendingList.length === 0 ? (
+              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
+                No pending {activeTab === 'LEAVE' ? 'leave' : 'budget'} requests.
+              </div>
+            ) : currentPendingList.map((item) => {
+              const id = currentIdOf(item);
+              const isLeave = activeTab === 'LEAVE';
+              const duration = isLeave ? daysBetween(item.start_date, item.end_date) : null;
+              const balance = isLeave ? balanceMap[item.user_id] : null;
+              return (
+                <div key={id} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex items-start gap-3">
+                      <input type="checkbox" checked={selectedIds.includes(id)} onChange={() => toggleSelected(id)}
+                        className="mt-1.5 rounded border-slate-300" />
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{isLeave ? 'Leave Request' : 'Budget Request'}</p>
+                        <h3 className="mt-1 text-lg font-semibold text-slate-900">{isLeave ? item.full_name : (item.project_name || item.project_code)}</h3>
+                        {isLeave ? (
+                          <>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
+                              {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}
+                            </p>
+                            {balance && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                Leave balance: <span className="font-semibold text-slate-700">{balance.remainingDays}/{balance.totalDays} days remaining</span>
+                              </p>
+                            )}
+                          </>
+                        ) : (
+                          <p className="mt-1 text-sm text-slate-500">{item.project_code} • {item.requested_hours} hrs requested</p>
+                        )}
+                        {isLeave && item.is_late_submission && (
+                          <span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-600">Late submission</span>
+                        )}
+                        {!isLeave && item.requester_name && (
+                          <p className="mt-1 text-xs text-slate-400">Requested by: {item.requester_name}</p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-2.5">
+                      <button
+                        onClick={() => openReviewModal(item, activeTab, false, 'APPROVED')}
+                        className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F]"
+                      >Approve</button>
+                      <button
+                        onClick={() => openReviewModal(item, activeTab, false, 'REJECTED')}
+                        className="rounded-2xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-red-400 hover:text-red-600"
+                      >Reject</button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -233,43 +380,82 @@ export default function ApprovalsPage() {
               <h2 className="mt-1 text-2xl font-semibold text-slate-950">All reviewed requests</h2>
             </div>
           </div>
-          {historyRecords.length === 0 && budgetHistoryRecords.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">No reviewed records yet.</div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-3 mb-5 pb-5 border-b border-slate-100">
+            <div className="flex gap-1.5">
+              {['ALL', 'LEAVE', 'BUDGET'].map((c) => (
+                <button key={c} type="button" onClick={() => setHistoryCategory(c)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    historyCategory === c ? 'bg-[#1540A8] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}>
+                  {c.charAt(0) + c.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1.5">
+              {['ALL', 'APPROVED', 'REJECTED'].map((s) => (
+                <button key={s} type="button" onClick={() => setHistoryStatus(s)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                    historyStatus === s ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}>
+                  {s.charAt(0) + s.slice(1).toLowerCase()}
+                </button>
+              ))}
+            </div>
+            <input type="text" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)}
+              placeholder="Search staff name…"
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 w-48 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <input type="date" value={historyDateFrom} onChange={(e) => setHistoryDateFrom(e.target.value)}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <span className="text-xs text-slate-400">to</span>
+            <input type="date" value={historyDateTo} onChange={(e) => setHistoryDateTo(e.target.value)}
+              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          </div>
+
+          {filteredHistory.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">No reviewed records match this filter.</div>
           ) : (
             <div className="space-y-3">
-              {historyRecords.map((item) => (
-                <div key={item.leave_id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Leave — {item.full_name}</p>
-                      <p className="mt-1 text-base font-semibold text-slate-900">
-                        {item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
-                      </p>
-                      <div className="mt-2 flex items-center gap-2">
-                        {statusBadge(item.workflow_status)}
-                        {item.reviewer_remarks && <span className="text-xs text-slate-500 italic">"{item.reviewer_remarks}"</span>}
+              {filteredHistory.map((row) => {
+                const item = row.raw;
+                const isLeave = row.type === 'LEAVE';
+                const duration = isLeave ? daysBetween(item.start_date, item.end_date) : null;
+                const decidedOn = formatDateTime(isLeave ? item.updated_at : item.reviewed_at);
+                const reviewerName = item.reviewer_name;
+                return (
+                  <div key={row.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
+                          {isLeave ? `Leave — ${item.full_name}` : `Budget — ${item.project_code}`}
+                        </p>
+                        <p className="mt-1 text-base font-semibold text-slate-900">
+                          {isLeave
+                            ? <>{item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
+                                {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}</>
+                            : <>{item.project_name || item.project_code} • {item.requested_hours} hrs</>}
+                        </p>
+                        <div className="mt-2 flex flex-wrap items-center gap-2">
+                          {statusBadge(row.status)}
+                          {item.reviewer_remarks && <span className="text-xs text-slate-500 italic">"{item.reviewer_remarks}"</span>}
+                        </div>
+                        {decidedOn && (
+                          <p className="mt-1.5 text-xs text-slate-400">
+                            {String(row.status).toUpperCase() === 'REJECTED' ? 'Rejected' : 'Approved'} on {decidedOn}{reviewerName ? ` by ${reviewerName}` : ''}
+                          </p>
+                        )}
                       </div>
-                    </div>
-                    <button onClick={() => openReviewModal(item, 'LEAVE', true)}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                      Edit Decision
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {budgetHistoryRecords.map((item) => (
-                <div key={item.request_id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Budget — {item.project_code}</p>
-                      <p className="mt-1 text-base font-semibold text-slate-900">
-                        {item.project_name || item.project_code} • {item.requested_hours} hrs
-                      </p>
-                      <div className="mt-2">{statusBadge(item.manager_status || item.status)}</div>
+                      {isLeave && (
+                        <button onClick={() => openReviewModal(item, 'LEAVE', true)}
+                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+                          Edit
+                        </button>
+                      )}
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -280,16 +466,23 @@ export default function ApprovalsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
           <div className="w-full max-w-lg rounded-3xl bg-white p-8 shadow-2xl">
             <h2 className="text-xl font-semibold text-slate-900 mb-1">
-              {reviewModal.isHistory ? 'Edit Decision' : (reviewModal.type === 'BUDGET' ? 'Review Budget Request' : 'Review Leave Request')}
+              {reviewModal.isHistory ? 'Edit Past Decision' : (reviewModal.type === 'BUDGET' ? 'Review Budget Request' : 'Review Leave Request')}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
               {reviewModal.type === 'BUDGET' ? (
                 <><strong>{reviewModal.item.project_code}</strong> — {reviewModal.item.project_name || reviewModal.item.project_code} • {reviewModal.item.requested_hours} hrs requested</>
               ) : (
                 <><strong>{reviewModal.item.full_name}</strong> — {reviewModal.item.category} •{' '}
-                START DATE: {formatDateOnly(reviewModal.item.start_date)} - END DATE: {formatDateOnly(reviewModal.item.end_date)}</>
+                START DATE: {formatDateOnly(reviewModal.item.start_date)} - END DATE: {formatDateOnly(reviewModal.item.end_date)}
+                {(() => { const d = daysBetween(reviewModal.item.start_date, reviewModal.item.end_date); return d ? ` (${d} Day${d !== 1 ? 's' : ''})` : ''; })()}
+                </>
               )}
             </p>
+            {reviewModal.isHistory && (
+              <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-700">
+                Changing a past decision can impact payroll or project tracking. A reason is required.
+              </div>
+            )}
 
             <div className="mb-4">
               <label className="block text-sm font-semibold text-slate-700 mb-2">Decision</label>
@@ -311,14 +504,18 @@ export default function ApprovalsPage() {
             </div>
 
             <div className="mb-5">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Remark <span className="font-normal text-slate-400">(optional)</span></label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">
+                {reviewModal.isHistory ? 'Reason for change' : 'Remark'}
+                {(reviewModal.isHistory || reviewAction === 'REJECTED') ? <span className="text-red-500"> *</span> : <span className="font-normal text-slate-400"> (optional)</span>}
+              </label>
               <textarea
                 rows={3}
                 value={reviewRemark}
                 onChange={(e) => setReviewRemark(e.target.value)}
-                placeholder="Add a note for the staff member…"
+                placeholder={reviewModal.isHistory ? 'Why is this past decision being changed?' : 'Add a note for the staff member…'}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
+              {reviewError && <p className="mt-2 text-sm font-medium text-red-500">{reviewError}</p>}
             </div>
 
             {feedback && (
@@ -341,7 +538,16 @@ export default function ApprovalsPage() {
           </div>
         </div>
       )}
+
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl bg-slate-900 px-5 py-4 text-sm font-medium text-white shadow-2xl">
+          <span>{toast.message}</span>
+          {toast.onUndo && (
+            <button onClick={toast.onUndo} className="font-bold text-blue-300 hover:text-blue-200">Undo</button>
+          )}
+          <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white">&times;</button>
+        </div>
+      )}
     </div>
   );
 }
-

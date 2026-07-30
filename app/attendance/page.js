@@ -26,7 +26,45 @@ function downloadCsv(fileName, csvContent) {
 
 function formatDt(dt) {
   if (!dt) return '—';
-  return new Date(dt).toLocaleString('en-SG', { dateStyle: 'short', timeStyle: 'short' });
+  const d = new Date(dt);
+  const datePart = d.toLocaleDateString('en-SG', { day: '2-digit', month: 'short' });
+  const timePart = d.toLocaleTimeString('en-SG', { hour: '2-digit', minute: '2-digit', hour12: true });
+  return `${datePart}, ${timePart}`;
+}
+
+function formatHoursDuration(hours) {
+  if (hours == null || isNaN(Number(hours))) return '—';
+  const totalMinutes = Math.round(Number(hours) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  const clock = `${h}h ${m}m`;
+  return `${clock} (${Number(hours).toFixed(2)})`;
+}
+
+function humanizeTravelMode(mode) {
+  if (!mode) return '—';
+  return String(mode).split('_').map((w) => w.charAt(0) + w.slice(1).toLowerCase()).join(' ');
+}
+
+// Currently clocked out but historic rows may still carry a stale ACTIVE status
+function derivedStatus(row) {
+  const raw = String(row.status || '').toUpperCase();
+  if (raw === 'VOIDED') return 'VOIDED';
+  return row.clock_out_time ? 'COMPLETED' : 'ACTIVE';
+}
+
+function isOvernightShift(row) {
+  if (!row.clock_in_time) return false;
+  const inHour = new Date(row.clock_in_time).getHours();
+  const isLateNightStart = inHour >= 22 || inHour < 6;
+  if (isLateNightStart) return true;
+  if (row.clock_out_time) {
+    const inDate = new Date(row.clock_in_time);
+    const outDate = new Date(row.clock_out_time);
+    const crossesMidnight = outDate.getDate() !== inDate.getDate() || outDate.getMonth() !== inDate.getMonth();
+    if (crossesMidnight) return true;
+  }
+  return false;
 }
 
 export default function AttendancePage() {
@@ -74,7 +112,7 @@ export default function AttendancePage() {
     const nameQ = nameSearch.trim().toLowerCase();
     const locQ = locationSearch.trim().toLowerCase();
     return rows.filter((row) => {
-      if (statusFilter !== 'ALL' && String(row.status || '').toUpperCase() !== statusFilter) return false;
+      if (statusFilter !== 'ALL' && derivedStatus(row) !== statusFilter) return false;
       if (nameQ && !String(row.full_name || '').toLowerCase().includes(nameQ)) return false;
       if (locQ && !String(row.location_name || '').toLowerCase().includes(locQ)) return false;
       if (dateFrom) {
@@ -103,7 +141,7 @@ export default function AttendancePage() {
       travel_mode: row.travel_mode,
       hours: row.daily_worktime_hours,
       ot_hours: row.ot_hours_accrued,
-      status: row.status,
+      status: derivedStatus(row),
       entry_type: row.entry_type,
       remark: row.remark,
     })));
@@ -153,7 +191,7 @@ export default function AttendancePage() {
             >
               <option value="ALL">All Status</option>
               <option value="ACTIVE">ACTIVE</option>
-              <option value="CLOSED">CLOSED</option>
+              <option value="COMPLETED">COMPLETED</option>
               <option value="VOIDED">VOIDED</option>
             </select>
           </div>
@@ -222,6 +260,8 @@ export default function AttendancePage() {
               <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No records match the selected filters.</td></tr>
             ) : filteredRows.map((row) => {
               const isOpen = expandedId === row.attendance_id;
+              const status = derivedStatus(row);
+              const overnight = isOvernightShift(row);
               return (
                 <React.Fragment key={row.attendance_id}>
                   <tr
@@ -230,27 +270,62 @@ export default function AttendancePage() {
                   >
                     <td className="px-4 py-3 font-medium text-slate-800">{row.full_name}</td>
                     <td className="px-4 py-3 text-slate-600">
-                      {formatDt(row.clock_in_time)} → {row.clock_out_time ? formatDt(row.clock_out_time) : <span className="text-green-600 font-semibold text-xs">ACTIVE</span>}
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span>{formatDt(row.clock_in_time)} → {row.clock_out_time ? formatDt(row.clock_out_time) : <span className="text-green-600 font-semibold text-xs">Ongoing</span>}</span>
+                        {overnight && (
+                          <span title="Overnight / unusual shift timing" className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                            ⚠ Overnight
+                          </span>
+                        )}
+                      </div>
                     </td>
-                    <td className="px-4 py-3 text-slate-600">{row.daily_worktime_hours ?? '—'}</td>
+                    <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{formatHoursDuration(row.daily_worktime_hours)}</td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        row.status === 'ACTIVE' ? 'bg-green-100 text-green-700'
-                        : row.status === 'CLOSED' ? 'bg-slate-100 text-slate-600'
+                      <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        status === 'ACTIVE' ? 'bg-green-100 text-green-700'
+                        : status === 'COMPLETED' ? 'bg-slate-100 text-slate-600'
                         : 'bg-red-100 text-red-600'
-                      }`}>{row.status || 'UNKNOWN'}</span>
+                      }`}>
+                        {status === 'ACTIVE' && <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />}
+                        {status}
+                      </span>
                     </td>
                     <td className="px-4 py-3 text-right text-slate-400">{isOpen ? '▲' : '▼'}</td>
                   </tr>
                   {isOpen && (
-                    <tr className="bg-slate-50/60">
-                      <td colSpan={5} className="px-4 py-4">
-                        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 text-sm">
-                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Project</p><p className="text-slate-700 mt-0.5">{row.project_code || (row.entry_type === 'GENERAL' ? 'General (non-project)' : '—')}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Location</p><p className="text-slate-700 mt-0.5">{row.location_name ? `${row.location_name}${row.country_code ? ` (${row.country_code})` : ''}` : '—'}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Travel Mode</p><p className="text-slate-700 mt-0.5">{row.travel_mode || '—'}</p></div>
-                          <div><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">OT Hours</p><p className="text-slate-700 mt-0.5">{row.ot_hours_accrued ?? '—'}</p></div>
-                          <div className="sm:col-span-2 lg:col-span-4"><p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Remark</p><p className="text-slate-700 mt-0.5">{row.remark || '—'}{row.is_manual_entry ? ' (manual entry)' : ''}</p></div>
+                    <tr>
+                      <td colSpan={5} className="p-0">
+                        <div className="border-l-4 border-[#1540A8] bg-[#F5F8FF] px-6 py-5">
+                          <div className="flex flex-wrap gap-x-10 gap-y-4">
+                            <div className="min-w-[140px]">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Project</p>
+                              <span className="mt-1 inline-block rounded-full bg-[#E8EEFF] px-3 py-1 text-xs font-semibold text-[#163EAF]">
+                                {row.project_code || (row.entry_type === 'GENERAL' ? 'General' : '—')}
+                              </span>
+                            </div>
+                            <div className="min-w-[220px] max-w-full">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Location</p>
+                              <p className="text-slate-700 mt-1 text-sm">{row.location_name ? `${row.location_name}${row.country_code ? ` (${row.country_code})` : ''}` : '—'}</p>
+                            </div>
+                            <div className="min-w-[140px]">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Travel Mode</p>
+                              <p className="text-slate-700 mt-1 text-sm">{humanizeTravelMode(row.travel_mode)}</p>
+                            </div>
+                            <div className="min-w-[100px]">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">OT Hours</p>
+                              <span className="mt-1 inline-block rounded-full bg-slate-200 px-3 py-1 text-xs font-semibold text-slate-600">
+                                {row.ot_hours_accrued ?? '0.00'}h
+                              </span>
+                            </div>
+                            <div className="min-w-[240px] flex-1">
+                              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Remark</p>
+                              <p className="mt-1 text-sm">
+                                {row.remark
+                                  ? <span className="text-slate-700">{row.remark}{row.is_manual_entry ? ' (manual entry)' : ''}</span>
+                                  : <span className="text-slate-400 italic">No remarks provided for this session.</span>}
+                              </p>
+                            </div>
+                          </div>
                         </div>
                       </td>
                     </tr>
@@ -264,6 +339,3 @@ export default function AttendancePage() {
     </div>
   );
 }
-
-
-

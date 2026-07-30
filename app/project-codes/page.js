@@ -1,7 +1,19 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+
+const isAutoEntry = (summary) => String(summary || '').startsWith('Auto-progress baseline');
+
+function formatSummary(log) {
+  const pct = log.completion_percentage != null ? `${Number(log.completion_percentage).toFixed(0)}%` : '';
+  if (isAutoEntry(log.progress_summary)) {
+    return `Auto: Progress update: ${pct}`;
+  }
+  const remark = String(log.progress_summary || '').trim();
+  const isDefaultRemark = remark === `Progress update: ${pct}` || remark === '';
+  return isDefaultRemark ? 'Manual' : `Manual: ${remark}`;
+}
 
 export default function ProjectCodesPage() {
   const [projects, setProjects] = useState([]);
@@ -12,6 +24,7 @@ export default function ProjectCodesPage() {
   // Project table filters
   const [projectStatusFilter, setProjectStatusFilter] = useState('ALL');
   const [projectSearch, setProjectSearch] = useState('');
+  const [hideTestCodes, setHideTestCodes] = useState(true);
   const [projectPage, setProjectPage] = useState(1);
 
   // Progress log state
@@ -66,6 +79,19 @@ export default function ProjectCodesPage() {
   useEffect(() => { void fetchAll(); }, [backendBaseUrl]);
   useEffect(() => { void fetchLogs(); }, [managerId]);
 
+  const resetProjectFilters = () => {
+    setProjectStatusFilter('ALL'); setProjectSearch(''); setHideTestCodes(true); setProjectPage(1);
+  };
+
+  const filteredProjects = projects.filter((p) => {
+    const statusOk = projectStatusFilter === 'ALL' || (p.status || 'ACTIVE').toUpperCase() === projectStatusFilter;
+    const q = projectSearch.trim().toLowerCase();
+    const searchOk = !q || (p.project_code || '').toLowerCase().includes(q) || (p.project_name || '').toLowerCase().includes(q) || (p.account_manager_name || '').toLowerCase().includes(q);
+    const isTestCode = Number(p.budget_hours) === 0 && Number(p.total_tracked_hours) === 0;
+    const testOk = !hideTestCodes || !isTestCode;
+    return statusOk && searchOk && testOk;
+  });
+
   const filteredLogs = progressLogs.filter((log) => {
     const dateMatch = !filterDate || String(log.logged_at || '').slice(0, 10) === filterDate;
     const nameMatch = !filterName || (log.reporter_name || log.reporter_email || '').toLowerCase().includes(filterName.toLowerCase());
@@ -74,12 +100,13 @@ export default function ProjectCodesPage() {
   });
 
   const exportCSV = () => {
-    const headers = ['Date', 'Staff Name', 'Project Code', 'Completion %', 'Summary'];
+    const headers = ['Date', 'Staff Name', 'Project Code', 'Completion %', 'Source', 'Summary'];
     const rows = filteredLogs.map((l) => [
       String(l.logged_at || '').slice(0, 10),
       l.reporter_name || l.reporter_email || '',
       l.project_code || '',
       l.completion_percentage ?? '',
+      isAutoEntry(l.progress_summary) ? 'Auto' : 'Manual',
       `"${String(l.progress_summary || '').replace(/"/g, '""')}"`,
     ]);
     const csv = [headers, ...rows].map((r) => r.join(',')).join('\n');
@@ -99,7 +126,7 @@ export default function ProjectCodesPage() {
         <p className="mt-1 text-sm text-slate-500">Active project codes and team progress logs.</p>
       </div>
 
-      {/* Project codes table */}
+      {/* Project codes toolbar */}
       <div className="mb-4 flex flex-wrap items-center gap-3">
         {['ALL', 'ACTIVE', 'INACTIVE'].map((f) => (
           <button key={f} onClick={() => setProjectStatusFilter(f)}
@@ -116,6 +143,17 @@ export default function ProjectCodesPage() {
           placeholder="Search code, name or manager..."
           className="rounded-2xl border border-slate-200 bg-white px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
         />
+        <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer">
+          <input type="checkbox" checked={hideTestCodes} onChange={(e) => setHideTestCodes(e.target.checked)}
+            className="rounded border-slate-300" />
+          Hide test/unused codes
+        </label>
+        {(projectStatusFilter !== 'ALL' || projectSearch || !hideTestCodes) && (
+          <button onClick={resetProjectFilters}
+            className="rounded-2xl border border-slate-200 px-4 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-50">
+            Reset Filters
+          </button>
+        )}
       </div>
       <div className="overflow-x-auto rounded-3xl border border-slate-200 bg-white shadow-sm mb-10">
         <table className="min-w-full text-left text-sm">
@@ -133,16 +171,11 @@ export default function ProjectCodesPage() {
             {loading ? (
               <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">Loading project codes...</td></tr>
             ) : (() => {
-              const filtered = projects.filter((p) => {
-                const statusOk = projectStatusFilter === 'ALL' || (p.status || 'ACTIVE').toUpperCase() === projectStatusFilter;
-                const q = projectSearch.trim().toLowerCase();
-                const searchOk = !q || (p.project_code || '').toLowerCase().includes(q) || (p.project_name || '').toLowerCase().includes(q) || (p.account_manager_name || '').toLowerCase().includes(q);
-                return statusOk && searchOk;
-              });
-              const totalPages = Math.max(1, Math.ceil(filtered.length / 10));
+              if (filteredProjects.length === 0) return <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No project codes found.</td></tr>;
+              const totalPages = Math.max(1, Math.ceil(filteredProjects.length / 10));
               const safePage = Math.min(projectPage, totalPages);
-              const page = filtered.slice((safePage - 1) * 10, safePage * 10);
-              if (filtered.length === 0) return <tr><td colSpan={6} className="px-6 py-8 text-center text-slate-500">No project codes found.</td></tr>;
+              const start = (safePage - 1) * 10;
+              const page = filteredProjects.slice(start, start + 10);
               return (
                 <>
                   {page.map((project) => {
@@ -175,7 +208,7 @@ export default function ProjectCodesPage() {
                   {totalPages > 1 && (
                     <tr><td colSpan={6} className="px-6 py-3 bg-slate-50">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500">Page {safePage} of {totalPages}</span>
+                        <span className="text-xs text-slate-500">Showing {start + 1}–{Math.min(start + 10, filteredProjects.length)} of {filteredProjects.length}</span>
                         <div className="flex gap-2">
                           <button onClick={() => setProjectPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}
                             className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-100">Prev</button>
@@ -194,20 +227,12 @@ export default function ProjectCodesPage() {
 
       {/* Progress Logs section */}
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-950">Progress Logs</h2>
-            <p className="mt-1 text-sm text-slate-500">Team progress submissions — filter and export as needed.</p>
-          </div>
-          <button
-            onClick={exportCSV}
-            className="rounded-2xl border border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            Export CSV
-          </button>
+        <div className="mb-5">
+          <h2 className="text-2xl font-semibold text-slate-950">Progress Logs</h2>
+          <p className="mt-1 text-sm text-slate-500">Team progress submissions — filter and export as needed.</p>
         </div>
 
-        <div className="flex flex-wrap gap-3 mb-5">
+        <div className="flex flex-wrap items-center gap-3 mb-5">
           <input
             type="date"
             value={filterDate}
@@ -233,9 +258,15 @@ export default function ProjectCodesPage() {
               onClick={() => { setFilterDate(''); setFilterName(''); setFilterCode(''); setLogsPage(1); }}
               className="rounded-2xl border border-slate-200 px-4 py-2 text-sm text-slate-500 hover:bg-slate-50"
             >
-              Clear filters
+              Reset Filters
             </button>
           )}
+          <button
+            onClick={exportCSV}
+            className="ml-auto rounded-2xl border border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            Export CSV
+          </button>
         </div>
 
         <div className="overflow-x-auto">
@@ -255,9 +286,10 @@ export default function ProjectCodesPage() {
               ) : filteredLogs.length === 0 ? (
                 <tr><td colSpan={5} className="px-6 py-8 text-center text-slate-500">No progress logs found.</td></tr>
               ) : (() => {
-                const totalPages = Math.max(1, Math.ceil(filteredLogs.length / 10));
+                const totalPages = Math.max(1, Math.ceil(filteredLogs.length / 8));
                 const safePage = Math.min(logsPage, totalPages);
-                const page = filteredLogs.slice((safePage - 1) * 10, safePage * 10);
+                const start = (safePage - 1) * 8;
+                const page = filteredLogs.slice(start, start + 8);
                 return (
                   <>
                     {page.map((log, idx) => (
@@ -275,13 +307,13 @@ export default function ProjectCodesPage() {
                             <span className="text-xs text-slate-500">{log.completion_percentage ?? 0}%</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-slate-600 max-w-xs truncate">{log.progress_summary || 'N/A'}</td>
+                        <td className="px-6 py-4 text-slate-600 max-w-xs truncate">{formatSummary(log)}</td>
                       </tr>
                     ))}
                     {totalPages > 1 && (
                       <tr><td colSpan={5} className="px-6 py-3 bg-slate-50">
                         <div className="flex items-center justify-between">
-                          <span className="text-xs text-slate-500">Page {safePage} of {totalPages}</span>
+                          <span className="text-xs text-slate-500">Showing {start + 1}–{Math.min(start + 8, filteredLogs.length)} of {filteredLogs.length}</span>
                           <div className="flex gap-2">
                             <button onClick={() => setLogsPage((p) => Math.max(1, p - 1))} disabled={safePage === 1}
                               className="rounded-xl border border-slate-200 px-3 py-1 text-xs font-semibold text-slate-600 disabled:opacity-40 hover:bg-slate-100">Prev</button>
