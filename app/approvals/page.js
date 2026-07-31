@@ -341,6 +341,16 @@ export default function ApprovalsPage() {
                                 Leave balance: <span className="font-semibold text-slate-700">{balance.remainingDays}/{balance.totalDays} days remaining</span>
                               </p>
                             )}
+                            {item.category === 'SICK' && (
+                              item.mc_file_url ? (
+                                <a href={item.mc_file_url} target="_blank" rel="noreferrer"
+                                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
+                                  View MC Document
+                                </a>
+                              ) : (
+                                <p className="mt-1.5 text-xs font-medium text-amber-600">MC not yet uploaded</p>
+                              )
+                            )}
                           </>
                         ) : (
                           <p className="mt-1 text-sm text-slate-500">{item.project_code} • {item.requested_hours} hrs requested</p>
@@ -440,6 +450,16 @@ export default function ApprovalsPage() {
                           {statusBadge(row.status)}
                           {item.reviewer_remarks && <span className="text-xs text-slate-500 italic">"{item.reviewer_remarks}"</span>}
                         </div>
+                        {isLeave && item.category === 'SICK' && (
+                          item.mc_file_url ? (
+                            <a href={item.mc_file_url} target="_blank" rel="noreferrer"
+                              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
+                              View MC Document
+                            </a>
+                          ) : (
+                            <p className="mt-1.5 text-xs font-medium text-amber-600">MC not yet uploaded</p>
+                          )
+                        )}
                         {decidedOn && (
                           <p className="mt-1.5 text-xs text-slate-400">
                             {String(row.status).toUpperCase() === 'REJECTED' ? 'Rejected' : 'Approved'} on {decidedOn}{reviewerName ? ` by ${reviewerName}` : ''}
