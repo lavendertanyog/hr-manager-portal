@@ -191,9 +191,9 @@ export default function ManagerDashboard() {
   };
 
   const stats = [
-    { label: 'Total Active Projects', value: projects.length, onClick: () => router.push('/project-codes') },
-    { label: 'Pending Leave Requests', value: pendingLeave.length, onClick: () => { setActiveTab('LEAVE'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
-    { label: 'Pending Budget Requests', value: pendingBudget.length, onClick: () => { setActiveTab('BUDGET'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
+    { key: null, label: 'Total Active Projects', value: projects.length, onClick: () => router.push('/project-codes') },
+    { key: 'LEAVE', label: 'Pending Leave Requests', value: pendingLeave.length, onClick: () => { setActiveTab('LEAVE'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
+    { key: 'BUDGET', label: 'Pending Budget Requests', value: pendingBudget.length, onClick: () => { setActiveTab('BUDGET'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
   ];
 
   return (
@@ -207,7 +207,9 @@ export default function ManagerDashboard() {
       <div className="grid gap-6 xl:grid-cols-3 mb-10">
         {stats.map((item) => (
           <button key={item.label} type="button" onClick={item.onClick}
-            className="text-left rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:shadow-md hover:border-slate-300 cursor-pointer">
+            className={`text-left rounded-3xl border bg-white p-6 shadow-sm transition cursor-pointer ${
+              item.key && activeTab === item.key ? 'border-[#1a3a8f] ring-2 ring-[#1a3a8f]/30' : 'border-slate-200 hover:shadow-md hover:border-slate-300'
+            }`}>
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{item.label}</p>
             <p className="mt-4 text-4xl font-semibold text-slate-950">{item.value}</p>
           </button>
@@ -216,11 +218,6 @@ export default function ManagerDashboard() {
 
       <div ref={approvalsRef} className="grid gap-8 xl:grid-cols-[2fr_1fr] mb-10 scroll-mt-6">
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="mb-6">
-            <p className="text-sm uppercase tracking-[0.28em] text-slate-400">Pending Approvals</p>
-            <h2 className="mt-3 text-2xl font-semibold text-slate-950">Review inbox</h2>
-          </div>
-
           <div className="flex flex-wrap gap-3 mb-5">
             <button
               onClick={() => setActiveTab('LEAVE')}

@@ -268,33 +268,27 @@ export default function ApprovalsPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex flex-wrap gap-3 mb-6">
-        {[
-          { id: 'LEAVE', label: 'Leave Requests', count: leaveRecords.length },
-          { id: 'BUDGET', label: 'Budget Escalations', count: budgetRecords.length },
-          { id: 'HISTORY', label: 'History', count: 0 },
-        ].map((t) => (
-          <button
-            key={t.id}
-            className={`inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold transition ${activeTab === t.id ? 'bg-[#1540A8] text-white shadow-[0_8px_20px_rgba(21,64,168,0.22)]' : 'bg-[#E8EEFF] text-[#163EAF]'}`}
-            onClick={() => setActiveTab(t.id)}
-          >
-            {t.label}
-            {t.count > 0 && (
-              <span className="inline-flex items-center justify-center rounded-full text-xs w-5 h-5 bg-red-500 text-white">{t.count}</span>
-            )}
-          </button>
-        ))}
-      </div>
+      <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+        <div className="flex flex-wrap gap-1 border-b border-gray-100 px-4 pt-4">
+          {[
+            { id: 'LEAVE', label: `Leave Requests (${leaveRecords.length})` },
+            { id: 'BUDGET', label: `Budget Escalations (${budgetRecords.length})` },
+            { id: 'HISTORY', label: 'History' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              className={`rounded-t-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === t.id ? 'bg-[#e8edf8] text-[#1a3a8f]' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={() => setActiveTab(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
 
       {/* ─── LEAVE / BUDGET (pending) ─── */}
       {(activeTab === 'LEAVE' || activeTab === 'BUDGET') && (
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Pending Approvals</p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">Review inbox</h2>
-            </div>
+        <div className="p-6">
+          <div className="flex flex-wrap items-center justify-end gap-4 mb-5">
             {currentPendingList.length > 0 && (
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
@@ -383,7 +377,7 @@ export default function ApprovalsPage() {
 
       {/* ─── HISTORY TAB ─── */}
       {activeTab === 'HISTORY' && (
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Decision History</p>
@@ -480,6 +474,7 @@ export default function ApprovalsPage() {
           )}
         </div>
       )}
+      </div>
 
       {/* ─── REVIEW MODAL ─── */}
       {reviewModal && (
