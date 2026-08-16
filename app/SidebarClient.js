@@ -26,10 +26,9 @@ const NAV = [
   { label: 'Team Management', href: '/team' },
   { label: 'Approvals', href: '/approvals' },
   { label: 'Progress', href: '/project-codes' },
-  { label: 'Attendance', href: '/attendance' },
 ];
 
-const SIDEBAR_PATH_PREFIXES = ['/dashboard', '/team', '/approvals', '/project-codes', '/attendance'];
+const SIDEBAR_PATH_PREFIXES = ['/dashboard', '/team', '/approvals', '/project-codes'];
 
 // Module-level: resets on every full page reload so role revocations are
 // enforced immediately on reload while still throttled during in-page navigation.
