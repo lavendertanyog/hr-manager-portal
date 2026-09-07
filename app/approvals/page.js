@@ -10,7 +10,7 @@ function formatDateOnly(d) {
 
 function formatDateTime(d) {
   if (!d) return null;
-  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+  return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Singapore' });
 }
 
 function daysBetween(start, end) {
@@ -407,9 +407,14 @@ export default function ApprovalsPage() {
                 </button>
               ))}
             </div>
-            <input type="text" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)}
-              placeholder="Search staff name…"
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 w-48 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            <div className="relative">
+              <svg className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input type="text" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)}
+                placeholder="Search staff name…"
+                className="rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-1.5 text-sm text-slate-900 w-48 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            </div>
             <input type="date" value={historyDateFrom} onChange={(e) => setHistoryDateFrom(e.target.value)}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             <span className="text-xs text-slate-400">to</span>
