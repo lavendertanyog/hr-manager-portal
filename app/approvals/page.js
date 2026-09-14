@@ -73,8 +73,18 @@ export default function ApprovalsPage() {
         axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-pending`).catch(() => ({ data: { data: [] } })),
         axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests`).catch(() => ({ data: { data: [] } })),
       ]);
-      setLeaveRecords(leaveRes.data.data || []);
-      setBudgetRecords(budgetRes.data.data || []);
+      const freshLeave = leaveRes.data.data || [];
+      const freshBudget = budgetRes.data.data || [];
+      setLeaveRecords(freshLeave);
+      setBudgetRecords(freshBudget);
+      // Prune any checkbox selection that no longer matches a still-pending item — otherwise a
+      // stale id (e.g. one just approved individually) lingers in selectedIds and poisons the
+      // next Bulk Approve, which aborts the whole batch on that item's 404.
+      const stillPendingIds = new Set([
+        ...freshLeave.map((item) => item.leave_id),
+        ...freshBudget.map((item) => item.request_id),
+      ]);
+      setSelectedIds((prev) => prev.filter((id) => stillPendingIds.has(id)));
     } catch {
       setLeaveRecords([]); setBudgetRecords([]);
     }
@@ -206,17 +216,27 @@ export default function ApprovalsPage() {
     const confirmed = window.confirm(`Approve ${selectedIds.length} selected ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request(s)?`);
     if (!confirmed) return;
     setBulkSubmitting(true);
-    try {
-      for (const id of selectedIds) {
+    // Each item is reviewed independently — one item that's already been processed elsewhere
+    // (e.g. approved individually a moment ago) shouldn't abort the rest of the batch, and the
+    // list is always refreshed afterward so the UI can't drift out of sync with the backend.
+    let succeeded = 0;
+    let failed = 0;
+    for (const id of selectedIds) {
+      try {
         await runReview(activeTab, id, 'APPROVED', undefined);
+        succeeded += 1;
+      } catch (err) {
+        failed += 1;
       }
-      showToast(`Approved ${selectedIds.length} request(s).`);
-      setSelectedIds([]);
-      await loadPending();
-    } catch (err) {
-      setFeedback(err.response?.data?.error || 'Bulk approval failed partway through — please review remaining items.');
-    } finally {
-      setBulkSubmitting(false);
+    }
+    await loadPending();
+    setBulkSubmitting(false);
+    if (failed === 0) {
+      showToast(`Approved ${succeeded} request(s).`);
+    } else if (succeeded === 0) {
+      showToast(`Bulk approve failed — ${failed} request(s) could not be processed (likely already handled elsewhere). List refreshed.`);
+    } else {
+      showToast(`Approved ${succeeded} request(s); ${failed} could not be processed (likely already handled elsewhere). List refreshed.`);
     }
   };
 

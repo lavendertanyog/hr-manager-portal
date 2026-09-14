@@ -151,6 +151,8 @@ export default function ManagerDashboard() {
     toastTimerRef.current = setTimeout(() => setToast(null), 6000);
   };
 
+  // Returns true/false rather than swallowing the error, so a failed review can't be mistaken
+  // for a successful one by whatever called it.
   const submitReview = async (id, action) => {
     try {
       if (activeTab === 'LEAVE') {
@@ -169,19 +171,21 @@ export default function ManagerDashboard() {
         });
       }
       await reloadApprovals();
+      return { ok: true };
     } catch (error) {
       console.error('Approval action failed:', error);
+      return { ok: false, message: error.response?.data?.error || 'Something went wrong — please try again.' };
     }
   };
 
   const handleReview = (item, action) => {
     const id = activeTab === 'LEAVE' ? item.leave_id : item.request_id;
     const name = activeTab === 'LEAVE' ? item.full_name : (item.project_name || item.project_code);
-    const verb = action === 'APPROVED' ? 'approve' : 'reject';
     const confirmed = window.confirm(`${action === 'APPROVED' ? 'Approve' : 'Reject'} this ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}?`);
     if (!confirmed) return;
 
-    submitReview(id, action).then(() => {
+    submitReview(id, action).then((result) => {
+      if (!result.ok) { showToast(result.message); return; }
       const opposite = action === 'APPROVED' ? 'REJECTED' : 'APPROVED';
       showToast(
         `${action === 'APPROVED' ? 'Approved' : 'Rejected'} ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}.`,
