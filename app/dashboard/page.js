@@ -111,7 +111,7 @@ export default function ManagerDashboard() {
     }
   };
 
-  const activeProjects = projects.filter((p) => (p.status || 'ACTIVE').toUpperCase() !== 'INACTIVE');
+  const activeProjects = projects.filter((p) => !['INACTIVE', 'DEPLOYED'].includes((p.status || 'ACTIVE').toUpperCase()));
 
   const handleAllocation = async () => {
     if (!managerId) {
