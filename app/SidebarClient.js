@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
+import { endSession } from './authSession';
 
 function deriveNameFromEmail(email) {
   return String(email || '')
@@ -127,6 +128,7 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
   }, []);
 
   const handleLogout = () => {
+    endSession();
     sessionStorage.removeItem('hr_portal_user');
     router.push('/');
   };
