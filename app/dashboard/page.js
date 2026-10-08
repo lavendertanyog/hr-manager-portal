@@ -3,6 +3,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import axios from 'axios';
+import { formatLeaveDate } from '../leaveFormat';
+import { useConfirm } from '../ConfirmDialog';
 
 function deriveNameFromEmail(email) {
   return String(email || '')
@@ -31,6 +33,7 @@ export default function ManagerDashboard() {
   const [allocMessage, setAllocMessage] = useState('');
   const [sessionUser, setSessionUser] = useState(null);
   const [toast, setToast] = useState(null); // { message, onUndo }
+  const [confirm, confirmDialog] = useConfirm();
 
   const approvalsRef = useRef(null);
   const toastTimerRef = useRef(null);
@@ -178,10 +181,15 @@ export default function ManagerDashboard() {
     }
   };
 
-  const handleReview = (item, action) => {
+  const handleReview = async (item, action) => {
     const id = activeTab === 'LEAVE' ? item.leave_id : item.request_id;
     const name = activeTab === 'LEAVE' ? item.full_name : (item.project_name || item.project_code);
-    const confirmed = window.confirm(`${action === 'APPROVED' ? 'Approve' : 'Reject'} this ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}?`);
+    const confirmed = await confirm({
+      title: action === 'APPROVED' ? 'Approve request' : 'Reject request',
+      message: `${action === 'APPROVED' ? 'Approve' : 'Reject'} this ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}?`,
+      confirmLabel: action === 'APPROVED' ? 'Approve' : 'Reject',
+      danger: action !== 'APPROVED',
+    });
     if (!confirmed) return;
 
     submitReview(id, action).then((result) => {
@@ -189,7 +197,15 @@ export default function ManagerDashboard() {
       const opposite = action === 'APPROVED' ? 'REJECTED' : 'APPROVED';
       showToast(
         `${action === 'APPROVED' ? 'Approved' : 'Rejected'} ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}.`,
-        () => { submitReview(id, opposite).then(() => setToast(null)); }
+        () => {
+          const undo = activeTab === 'LEAVE'
+            ? axios.patch(`${backendBaseUrl}/api/v1/leave/undo-review`, { leaveId: id, reviewerId: managerId })
+                .then(() => reloadApprovals())
+                .then(() => showToast(`Undone. The leave request for ${name} is pending again.`))
+                .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use Approvals > History to change the decision.'))
+            : submitReview(id, opposite).then(() => setToast(null));
+          return undo;
+        }
       );
     });
   };
@@ -258,7 +274,7 @@ export default function ManagerDashboard() {
                     const key = isLeave ? item.leave_id : item.request_id;
                     const title = isLeave ? item.full_name : item.project_name;
                     const sub = isLeave
-                      ? `${item.category} • ${String(item.start_date || '').slice(0, 10)} → ${String(item.end_date || '').slice(0, 10)}`
+                      ? `${item.category} • ${formatLeaveDate(String(item.start_date || '').slice(0, 10))} → ${formatLeaveDate(String(item.end_date || '').slice(0, 10))}`
                       : `${item.project_code} • ${item.requested_hours} hrs • Requested by ${item.requester_name || item.requester_email || 'Unknown'}`;
                     const statusColor = item.status === 'APPROVED' ? 'text-green-600 bg-green-50' : item.status === 'REJECTED' ? 'text-red-600 bg-red-50' : item.status === 'MANAGER_APPROVED' ? 'text-blue-600 bg-blue-50' : 'text-yellow-600 bg-yellow-50';
                     const statusLabel = item.status === 'MANAGER_APPROVED' ? 'Pending AM Approval' : item.status;
@@ -288,7 +304,7 @@ export default function ManagerDashboard() {
                 const key = activeTab === 'LEAVE' ? item.leave_id : item.request_id;
                 const title = activeTab === 'LEAVE' ? item.full_name : item.project_name;
                 const subtitle = activeTab === 'LEAVE'
-                  ? `${item.category} • START DATE: ${String(item.start_date || '').slice(0, 10)} - END DATE: ${String(item.end_date || '').slice(0, 10)}`
+                  ? `${item.category} • START DATE: ${formatLeaveDate(String(item.start_date || '').slice(0, 10))} - END DATE: ${formatLeaveDate(String(item.end_date || '').slice(0, 10))}`
                   : `${item.project_code} • ${item.requested_hours} hrs requested`;
 
                 return (
@@ -385,6 +401,8 @@ export default function ManagerDashboard() {
           </div>
         </aside>
       </div>
+
+      {confirmDialog}
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl bg-slate-900 px-5 py-4 text-sm font-medium text-white shadow-2xl">
