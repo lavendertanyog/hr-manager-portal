@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import axios from 'axios';
+import { formatLeaveDate, openMcFile } from '../leaveFormat';
+import { useConfirm } from '../ConfirmDialog';
 
 function formatDateOnly(d) {
   if (!d) return '—';
-  return String(d).slice(0, 10);
+  return formatLeaveDate(String(d).slice(0, 10));
 }
 
 function formatDateTime(d) {
@@ -48,6 +50,7 @@ export default function ApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [bulkSubmitting, setBulkSubmitting] = useState(false);
   const [toast, setToast] = useState(null);
+  const [confirm, confirmDialog] = useConfirm();
   const toastTimerRef = useRef(null);
 
   // History filters
@@ -156,6 +159,14 @@ export default function ApprovalsPage() {
     }
   };
 
+  const runUndo = async (type, id, action) => {
+    if (type === 'BUDGET') {
+      await runReview(type, id, action === 'APPROVED' ? 'REJECTED' : 'APPROVED', 'Reverted');
+    } else {
+      await axios.patch(`${backendBaseUrl}/api/v1/leave/undo-review`, { leaveId: id, reviewerId: managerId });
+    }
+  };
+
   const runReReview = async (id, action, remarks) => {
     await axios.patch(`${backendBaseUrl}/api/v1/leave/re-review`, {
       leaveId: id, reviewerId: managerId, action, reviewerRemarks: remarks,
@@ -189,10 +200,13 @@ export default function ApprovalsPage() {
         loadPending();
         if (reviewModal.isHistory) loadHistory();
         if (!reviewModal.isHistory) {
-          const opposite = reviewAction === 'APPROVED' ? 'REJECTED' : 'APPROVED';
           showToast(
             `${reviewAction === 'APPROVED' ? 'Approved' : 'Rejected'} ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name}.`,
-            () => { runReview(reviewModal.type, id, opposite, 'Reverted').then(() => { loadPending(); setToast(null); }); }
+            () => {
+              runUndo(reviewModal.type, id, reviewAction)
+                .then(() => { loadPending(); showToast(`Undone. The ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name} is pending again.`); })
+                .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use History to change the decision.'));
+            }
           );
         }
       }, 900);
@@ -213,7 +227,11 @@ export default function ApprovalsPage() {
 
   const handleBulkApprove = async () => {
     if (selectedIds.length === 0) return;
-    const confirmed = window.confirm(`Approve ${selectedIds.length} selected ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request(s)?`);
+    const confirmed = await confirm({
+      title: 'Bulk approve',
+      message: `Approve ${selectedIds.length} selected ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request(s)?`,
+      confirmLabel: 'Approve',
+    });
     if (!confirmed) return;
     setBulkSubmitting(true);
     // Each item is reviewed independently — one item that's already been processed elsewhere
@@ -357,10 +375,10 @@ export default function ApprovalsPage() {
                             )}
                             {item.category === 'SICK' && (
                               item.mc_file_url ? (
-                                <a href={item.mc_file_url} target="_blank" rel="noreferrer"
+                                <button type="button" onClick={() => openMcFile(item.mc_file_url)}
                                   className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
                                   View MC Document
-                                </a>
+                                </button>
                               ) : (
                                 <p className="mt-1.5 text-xs font-medium text-amber-600">MC not yet uploaded</p>
                               )
@@ -471,10 +489,10 @@ export default function ApprovalsPage() {
                         </div>
                         {isLeave && item.category === 'SICK' && (
                           item.mc_file_url ? (
-                            <a href={item.mc_file_url} target="_blank" rel="noreferrer"
+                            <button type="button" onClick={() => openMcFile(item.mc_file_url)}
                               className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
                               View MC Document
-                            </a>
+                            </button>
                           ) : (
                             <p className="mt-1.5 text-xs font-medium text-amber-600">MC not yet uploaded</p>
                           )
@@ -578,6 +596,8 @@ export default function ApprovalsPage() {
           </div>
         </div>
       )}
+
+      {confirmDialog}
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl bg-slate-900 px-5 py-4 text-sm font-medium text-white shadow-2xl">
