@@ -159,9 +159,9 @@ export default function ApprovalsPage() {
     }
   };
 
-  const runUndo = async (type, id, action) => {
+  const runUndo = async (type, id) => {
     if (type === 'BUDGET') {
-      await runReview(type, id, action === 'APPROVED' ? 'REJECTED' : 'APPROVED', 'Reverted');
+      await axios.patch(`${backendBaseUrl}/api/v1/projects/budget-request/undo-review`, { requestId: id, reviewerId: managerId });
     } else {
       await axios.patch(`${backendBaseUrl}/api/v1/leave/undo-review`, { leaveId: id, reviewerId: managerId });
     }

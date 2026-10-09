@@ -194,17 +194,17 @@ export default function ManagerDashboard() {
 
     submitReview(id, action).then((result) => {
       if (!result.ok) { showToast(result.message); return; }
-      const opposite = action === 'APPROVED' ? 'REJECTED' : 'APPROVED';
+      const kind = activeTab === 'LEAVE' ? 'leave' : 'budget';
       showToast(
-        `${action === 'APPROVED' ? 'Approved' : 'Rejected'} ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}.`,
+        `${action === 'APPROVED' ? 'Approved' : 'Rejected'} ${kind} request for ${name}.`,
         () => {
-          const undo = activeTab === 'LEAVE'
+          const undo = kind === 'leave'
             ? axios.patch(`${backendBaseUrl}/api/v1/leave/undo-review`, { leaveId: id, reviewerId: managerId })
-                .then(() => reloadApprovals())
-                .then(() => showToast(`Undone. The leave request for ${name} is pending again.`))
-                .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use Approvals > History to change the decision.'))
-            : submitReview(id, opposite).then(() => setToast(null));
-          return undo;
+            : axios.patch(`${backendBaseUrl}/api/v1/projects/budget-request/undo-review`, { requestId: id, reviewerId: managerId });
+          return undo
+            .then(() => reloadApprovals())
+            .then(() => showToast(`Undone. The ${kind} request for ${name} is pending again.`))
+            .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use Approvals > History to change the decision.'));
         }
       );
     });
