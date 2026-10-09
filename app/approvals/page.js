@@ -74,7 +74,7 @@ export default function ApprovalsPage() {
     try {
       const [leaveRes, budgetRes] = await Promise.all([
         axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-pending`).catch(() => ({ data: { data: [] } })),
-        axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests`).catch(() => ({ data: { data: [] } })),
+        axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests?reviewerId=${managerId}`).catch(() => ({ data: { data: [] } })),
       ]);
       const freshLeave = leaveRes.data.data || [];
       const freshBudget = budgetRes.data.data || [];

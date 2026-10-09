@@ -62,7 +62,7 @@ export default function ManagerDashboard() {
       try {
         const [leaveRes, budgetRes, projectsRes, staffRes, histLeaveRes, histBudgetRes, workloadRes] = await Promise.all([
           axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-pending`).catch(() => ({ data: { data: [] } })),
-          axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests`).catch(() => ({ data: { data: [] } })),
+          axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests?reviewerId=${managerId}`).catch(() => ({ data: { data: [] } })),
           axios.get(`${backendBaseUrl}/api/v1/projects`).catch(() => ({ data: { data: [] } })),
           axios.get(`${backendBaseUrl}/api/v1/users`).catch(() => ({ data: { data: [] } })),
           axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-all`).catch(() => ({ data: { data: [] } })),
@@ -104,7 +104,7 @@ export default function ManagerDashboard() {
     try {
       const [leaveRes, budgetRes] = await Promise.all([
         axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-pending`),
-        axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests`),
+        axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests?reviewerId=${managerId}`),
       ]);
       setPendingLeave(leaveRes.data.data || []);
       setPendingBudget(budgetRes.data.data || []);
