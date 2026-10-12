@@ -65,6 +65,23 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
     return next;
   });
   const menuRef = useRef(null);
+  const navRef = useRef(null);
+
+  // Keep the open page's tab in view when the tab list has to scroll.
+  useEffect(() => {
+    navRef.current?.querySelector('[aria-current="page"]')?.scrollIntoView({ block: 'nearest' });
+  }, [pathname]);
+
+  // On a shorter screen (most laptops) the full-size tabs don't all fit above the settings
+  // button, so the rail switches to a compact size; the tab list still scrolls if even that
+  // doesn't fit.
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const check = () => setCompact(window.innerHeight < 900);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
 
   useEffect(() => {
     try {
@@ -237,11 +254,11 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
         </button>
 
         {/* Logo */}
-        <div className="flex items-center justify-center" style={{ paddingTop: collapsed ? 28 : 50, paddingBottom: 4 }}>
+        <div className="flex items-center justify-center" style={{ paddingTop: collapsed ? 28 : compact ? 36 : 50, paddingBottom: 4 }}>
           {collapsed ? (
             <span aria-hidden="true" style={{ display: 'block', height: 20 }} />
           ) : !logoMissing ? (
-            <img src="/nextan-logo.png" alt="Nextan" width={156} height={48}
+            <img src="/nextan-logo.png" alt="Nextan" width={compact ? 120 : 156} height={compact ? 36 : 48}
               className="object-contain brightness-0 invert"
               onError={() => setLogoMissing(true)} />
           ) : (
@@ -249,20 +266,23 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
           )}
         </div>
 
-        <nav className="flex flex-col items-center" style={{ paddingTop: 20 }}>
+        {/* The tabs scroll in the space above the settings pill when they don't all fit,
+            so none of them ends up hidden behind it on a shorter screen. */}
+        <nav ref={navRef} className="flex flex-col items-center overflow-y-auto hide-native-scrollbar" style={{ paddingTop: 20, flex: 1, minHeight: 0 }}>
           {NAV.map((item) => {
             const active = pathname.startsWith(item.href);
             return (
               <Link key={item.href} href={item.href}
                 title={item.label}
                 aria-label={item.label}
-                className="flex flex-col items-center justify-center transition-all"
+                aria-current={active ? 'page' : undefined}
+                className="flex flex-col items-center justify-center transition-all flex-shrink-0"
                 style={{
-                  width: collapsed ? (active ? 44 : 40) : (active ? 80 : 69),
-                  height: collapsed ? (active ? 44 : 40) : (active ? 132 : 69),
-                  borderRadius: collapsed ? (active ? 14 : 12) : (active ? 40 : 18),
-                  margin: collapsed ? (active ? '6px 0' : '4px 0') : (active ? '18px 0' : '6px 0'),
-                  gap: 7,
+                  width: collapsed ? (active ? 44 : 40) : compact ? (active ? 76 : 64) : (active ? 80 : 69),
+                  height: collapsed ? (active ? 44 : 40) : compact ? (active ? 70 : 50) : (active ? 132 : 69),
+                  borderRadius: collapsed ? (active ? 14 : 12) : compact ? (active ? 28 : 16) : (active ? 40 : 18),
+                  margin: collapsed ? (active ? '6px 0' : '4px 0') : compact ? (active ? '8px 0' : '3px 0') : (active ? '18px 0' : '6px 0'),
+                  gap: compact ? 5 : 7,
                   background: active ? PAGE_BG : 'transparent',
                   color: active ? '#16307a' : '#aab8e0',
                 }}>
@@ -274,20 +294,18 @@ export default function SidebarClient({ isDrawer = false, onClose }) {
         </nav>
 
         {/* Settings / profile — a half pill flush against the bottom edge */}
-        <div ref={menuRef}>
-          <div style={{ position: 'absolute', bottom: 0, left: (RAIL_W - PILL_W) / 2, width: PILL_W }}>
-            <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
-              className="flex items-center justify-center"
-              style={{
-                width: PILL_W, height: collapsed ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
-                background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
-              }}>
-              <NavIcon name="settings" size={18} />
-            </button>
-          </div>
+        <div ref={menuRef} style={{ position: 'relative', flexShrink: 0, left: (RAIL_W - PILL_W) / 2, width: PILL_W }}>
+          <button type="button" onClick={() => setMenuOpen((v) => !v)} aria-label="Settings"
+            className="flex items-center justify-center"
+            style={{
+              width: PILL_W, height: collapsed ? 64 : compact ? 64 : 93, borderRadius: collapsed ? '24px 24px 0 0' : '36px 36px 0 0',
+              background: '#f0c9dc', color: '#16307a', border: 'none', cursor: 'pointer',
+            }}>
+            <NavIcon name="settings" size={18} />
+          </button>
           {menuOpen && (
             <div className="absolute rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30"
-              style={{ bottom: collapsed ? 72 : 101, left: (RAIL_W - PILL_W) / 2, width: 170 }}>
+              style={{ bottom: collapsed || compact ? 72 : 101, left: 0, width: 170 }}>
               <div className="px-4 pb-2 pt-1 border-b border-slate-100 mb-1">
                 <p className="text-sm font-semibold text-slate-900 truncate">{displayName}</p>
                 <p className="text-xs text-slate-500">Manager</p>

@@ -59,3 +59,12 @@ body {
 .page-scrollbar::-webkit-scrollbar-thumb:hover {
   background-color: #1a3a8f;
 }
+
+/* Hides the scrollbar on a list that still scrolls (the sidebar tabs on a short screen),
+   same as the Staff and HR portals. */
+.hide-native-scrollbar {
+  scrollbar-width: none;
+}
+.hide-native-scrollbar::-webkit-scrollbar {
+  display: none;
+}
