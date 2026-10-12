@@ -4,6 +4,9 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import axios from 'axios';
 import { formatLeaveDate, openMcFile } from '../leaveFormat';
 import { useConfirm } from '../ConfirmDialog';
+import { authHeaders } from '../authSession';
+
+const money = (currency, amount) => `${currency} ${Number(amount || 0).toFixed(2)}`;
 
 function formatDateOnly(d) {
   if (!d) return '—';
@@ -39,6 +42,9 @@ export default function ApprovalsPage() {
   const [budgetRecords, setBudgetRecords] = useState([]);
   const [historyRecords, setHistoryRecords] = useState([]);
   const [budgetHistoryRecords, setBudgetHistoryRecords] = useState([]);
+  const [claimRecords, setClaimRecords] = useState([]);
+  const [claimHistoryRecords, setClaimHistoryRecords] = useState([]);
+  const [claimCategories, setClaimCategories] = useState([]);
   const [managerId, setManagerId] = useState('');
   const [reviewModal, setReviewModal] = useState(null); // { item, type, isHistory }
   const [reviewAction, setReviewAction] = useState('APPROVED');
@@ -72,36 +78,42 @@ export default function ApprovalsPage() {
   const loadPending = useCallback(async () => {
     if (!managerId) return;
     try {
-      const [leaveRes, budgetRes] = await Promise.all([
+      const [leaveRes, budgetRes, claimRes] = await Promise.all([
         axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-pending`).catch(() => ({ data: { data: [] } })),
         axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests?reviewerId=${managerId}`).catch(() => ({ data: { data: [] } })),
+        axios.get(`${backendBaseUrl}/api/v1/claims/manager-pending`, { headers: authHeaders() }).catch(() => ({ data: { data: [] } })),
       ]);
       const freshLeave = leaveRes.data.data || [];
       const freshBudget = budgetRes.data.data || [];
+      const freshClaims = claimRes.data.data || [];
       setLeaveRecords(freshLeave);
       setBudgetRecords(freshBudget);
+      setClaimRecords(freshClaims);
       // Prune any checkbox selection that no longer matches a still-pending item — otherwise a
       // stale id (e.g. one just approved individually) lingers in selectedIds and poisons the
       // next Bulk Approve, which aborts the whole batch on that item's 404.
       const stillPendingIds = new Set([
         ...freshLeave.map((item) => item.leave_id),
         ...freshBudget.map((item) => item.request_id),
+        ...freshClaims.map((item) => item.claim_id),
       ]);
       setSelectedIds((prev) => prev.filter((id) => stillPendingIds.has(id)));
     } catch {
-      setLeaveRecords([]); setBudgetRecords([]);
+      setLeaveRecords([]); setBudgetRecords([]); setClaimRecords([]);
     }
   }, [backendBaseUrl, managerId]);
 
   const loadHistory = useCallback(async () => {
     if (!managerId) return;
     try {
-      const [leaveRes, budgetHistRes] = await Promise.all([
+      const [leaveRes, budgetHistRes, claimHistRes] = await Promise.all([
         axios.get(`${backendBaseUrl}/api/v1/manager/${managerId}/leave-all`),
         axios.get(`${backendBaseUrl}/api/v1/projects/budget-requests/history`).catch(() => ({ data: { data: [] } })),
+        axios.get(`${backendBaseUrl}/api/v1/claims/manager-history`, { headers: authHeaders() }).catch(() => ({ data: { data: [] } })),
       ]);
       setHistoryRecords(leaveRes.data.data || []);
       setBudgetHistoryRecords(budgetHistRes.data.data || []);
+      setClaimHistoryRecords(claimHistRes.data.data || []);
     } catch {
       setHistoryRecords([]);
     }
@@ -114,6 +126,20 @@ export default function ApprovalsPage() {
   }, [activeTab, managerId, loadPending, loadHistory]);
 
   useEffect(() => { setSelectedIds([]); }, [activeTab]);
+
+  useEffect(() => {
+    axios.get(`${backendBaseUrl}/api/v1/claims/categories`).then((r) => setClaimCategories(r.data?.data || [])).catch(() => setClaimCategories([]));
+  }, [backendBaseUrl]);
+  const claimCategoryLabel = (code) => claimCategories.find((c) => c.code === code)?.label || code;
+
+  const viewClaimReceipt = async (claimId) => {
+    try {
+      const res = await axios.get(`${backendBaseUrl}/api/v1/claims/${claimId}/receipt`, { headers: authHeaders() });
+      openMcFile(res.data?.data?.receiptImage);
+    } catch (err) {
+      showToast(err.response?.data?.error || 'Failed to open the receipt.');
+    }
+  };
 
   // Fetch leave balance for each pending applicant so the card/modal can show remaining days context
   useEffect(() => {
@@ -147,7 +173,9 @@ export default function ApprovalsPage() {
   };
 
   const runReview = async (type, id, action, remarks) => {
-    if (type === 'BUDGET') {
+    if (type === 'CLAIMS') {
+      await axios.patch(`${backendBaseUrl}/api/v1/claims/${id}/manager-review`, { action, remarks: remarks || undefined }, { headers: authHeaders() });
+    } else if (type === 'BUDGET') {
       const budgetAction = action === 'APPROVED' ? 'MANAGER_APPROVED' : action;
       await axios.patch(`${backendBaseUrl}/api/v1/projects/budget-request/review`, {
         requestId: id, reviewerId: managerId, action: budgetAction, reviewerRemarks: remarks || undefined,
@@ -187,8 +215,10 @@ export default function ApprovalsPage() {
     setSubmitting(true);
     setFeedback(''); setReviewError('');
     try {
-      const id = reviewModal.type === 'BUDGET' ? reviewModal.item.request_id : reviewModal.item.leave_id;
-      const name = reviewModal.type === 'BUDGET' ? (reviewModal.item.project_name || reviewModal.item.project_code) : reviewModal.item.full_name;
+      const isClaim = reviewModal.type === 'CLAIMS';
+      const id = isClaim ? reviewModal.item.claim_id : reviewModal.type === 'BUDGET' ? reviewModal.item.request_id : reviewModal.item.leave_id;
+      const name = isClaim ? reviewModal.item.claimant_name : reviewModal.type === 'BUDGET' ? (reviewModal.item.project_name || reviewModal.item.project_code) : reviewModal.item.full_name;
+      const kind = isClaim ? 'claim' : reviewModal.type === 'BUDGET' ? 'budget request' : 'leave request';
       if (reviewModal.isHistory) {
         await runReReview(id, reviewAction, reviewRemark.trim());
       } else {
@@ -200,11 +230,12 @@ export default function ApprovalsPage() {
         loadPending();
         if (reviewModal.isHistory) loadHistory();
         if (!reviewModal.isHistory) {
+          // Claims have no Undo yet (planned for a later version).
           showToast(
-            `${reviewAction === 'APPROVED' ? 'Approved' : 'Rejected'} ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name}.`,
-            () => {
+            `${reviewAction === 'APPROVED' ? 'Approved' : 'Rejected'} ${kind} for ${name}.`,
+            isClaim ? undefined : () => {
               runUndo(reviewModal.type, id, reviewAction)
-                .then(() => { loadPending(); showToast(`Undone. The ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name} is pending again.`); })
+                .then(() => { loadPending(); showToast(`Undone. The ${kind} for ${name} is pending again.`); })
                 .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use History to change the decision.'));
             }
           );
@@ -221,15 +252,16 @@ export default function ApprovalsPage() {
     setSelectedIds((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
   };
 
-  const currentPendingList = activeTab === 'LEAVE' ? leaveRecords : budgetRecords;
-  const currentIdOf = (item) => activeTab === 'LEAVE' ? item.leave_id : item.request_id;
+  const currentPendingList = activeTab === 'LEAVE' ? leaveRecords : activeTab === 'CLAIMS' ? claimRecords : budgetRecords;
+  const currentIdOf = (item) => activeTab === 'LEAVE' ? item.leave_id : activeTab === 'CLAIMS' ? item.claim_id : item.request_id;
+  const tabNoun = activeTab === 'LEAVE' ? 'leave request' : activeTab === 'CLAIMS' ? 'claim' : 'budget request';
   const allSelected = currentPendingList.length > 0 && selectedIds.length === currentPendingList.length;
 
   const handleBulkApprove = async () => {
     if (selectedIds.length === 0) return;
     const confirmed = await confirm({
       title: 'Bulk approve',
-      message: `Approve ${selectedIds.length} selected ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request(s)?`,
+      message: `Approve ${selectedIds.length} selected ${tabNoun}(s)?`,
       confirmLabel: 'Approve',
     });
     if (!confirmed) return;
@@ -276,15 +308,27 @@ export default function ApprovalsPage() {
       status: item.manager_status || item.status,
       sortDate: item.reviewed_at || item.created_at,
     }));
-    return [...leave, ...budget].sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
-  }, [historyRecords, budgetHistoryRecords]);
+    // The manager's own decision on a claim: a claim HR rejected after the manager approved it
+    // still counts as approved here.
+    const claims = claimHistoryRecords.map((item) => ({
+      type: 'CLAIM',
+      key: `claim-${item.claim_id}`,
+      raw: item,
+      title: item.claimant_name,
+      status: item.status === 'REJECTED' && !item.hr_reviewed_by ? 'REJECTED' : 'APPROVED',
+      sortDate: item.manager_reviewed_at || item.created_at,
+    }));
+    return [...leave, ...budget, ...claims].sort((a, b) => new Date(b.sortDate || 0) - new Date(a.sortDate || 0));
+  }, [historyRecords, budgetHistoryRecords, claimHistoryRecords]);
 
   const filteredHistory = combinedHistory.filter((row) => {
     if (historyCategory !== 'ALL' && row.type !== historyCategory) return false;
     if (historyStatus !== 'ALL' && String(row.status || '').toUpperCase() !== historyStatus) return false;
     const q = historySearch.trim().toLowerCase();
     if (q) {
-      const name = row.type === 'LEAVE' ? row.raw.full_name : (row.raw.requester_name || row.raw.requester_email || '');
+      const name = row.type === 'LEAVE' ? row.raw.full_name
+        : row.type === 'CLAIM' ? row.raw.claimant_name
+        : (row.raw.requester_name || row.raw.requester_email || '');
       if (!String(name || '').toLowerCase().includes(q)) return false;
     }
     if (historyDateFrom && new Date(row.sortDate) < new Date(historyDateFrom)) return false;
@@ -301,7 +345,7 @@ export default function ApprovalsPage() {
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="mt-2 text-4xl font-semibold text-slate-950">Approvals</h1>
-          <p className="mt-1 text-sm text-slate-500">Review outstanding leave and budget requests.</p>
+          <p className="mt-1 text-sm text-slate-500">Review outstanding leave, budget and claim requests.</p>
         </div>
       </div>
 
@@ -311,6 +355,7 @@ export default function ApprovalsPage() {
           {[
             { id: 'LEAVE', label: `Leave Requests (${leaveRecords.length})` },
             { id: 'BUDGET', label: `Budget Escalations (${budgetRecords.length})` },
+            { id: 'CLAIMS', label: `Claims (${claimRecords.length})` },
             { id: 'HISTORY', label: 'History' },
           ].map((t) => (
             <button
@@ -324,7 +369,7 @@ export default function ApprovalsPage() {
         </div>
 
       {/* ─── LEAVE / BUDGET (pending) ─── */}
-      {(activeTab === 'LEAVE' || activeTab === 'BUDGET') && (
+      {(activeTab === 'LEAVE' || activeTab === 'BUDGET' || activeTab === 'CLAIMS') && (
         <div className="p-6">
           <div className="flex flex-wrap items-center justify-end gap-4 mb-5">
             {currentPendingList.length > 0 && (
@@ -346,11 +391,12 @@ export default function ApprovalsPage() {
           <div className="space-y-3">
             {currentPendingList.length === 0 ? (
               <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
-                No pending {activeTab === 'LEAVE' ? 'leave' : 'budget'} requests.
+                No pending {tabNoun}s.
               </div>
             ) : currentPendingList.map((item) => {
               const id = currentIdOf(item);
               const isLeave = activeTab === 'LEAVE';
+              const isClaim = activeTab === 'CLAIMS';
               const duration = isLeave ? daysBetween(item.start_date, item.end_date) : null;
               const balance = isLeave ? balanceMap[item.user_id] : null;
               return (
@@ -360,9 +406,27 @@ export default function ApprovalsPage() {
                       <input type="checkbox" checked={selectedIds.includes(id)} onChange={() => toggleSelected(id)}
                         className="mt-1.5 rounded border-slate-300" />
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{isLeave ? 'Leave Request' : 'Budget Request'}</p>
-                        <h3 className="mt-1 text-lg font-semibold text-slate-900">{isLeave ? item.full_name : (item.project_name || item.project_code)}</h3>
-                        {isLeave ? (
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{isLeave ? 'Leave Request' : isClaim ? 'Claim' : 'Budget Request'}</p>
+                        <h3 className="mt-1 text-lg font-semibold text-slate-900">{isLeave ? item.full_name : isClaim ? item.claimant_name : (item.project_name || item.project_code)}</h3>
+                        {isClaim ? (
+                          <>
+                            <p className="mt-1 text-sm text-slate-500">
+                              {item.merchant} • {claimCategoryLabel(item.category)} • {formatDateOnly(item.purchase_date)}
+                              <span className="ml-1.5 font-semibold text-[#1540A8]">{money(item.currency, item.total_amount)}</span>
+                            </p>
+                            {item.items?.length > 0 && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                {item.items.map((it) => `${it.quantity ? `${Number(it.quantity)} × ` : ''}${it.description}`).join(', ')}
+                              </p>
+                            )}
+                            {item.project_code && <p className="mt-1 text-xs text-slate-500">Project: {item.project_code}{item.project_name ? ` · ${item.project_name}` : ''}</p>}
+                            {item.notes && <p className="mt-1 text-xs text-slate-500 italic">&quot;{item.notes}&quot;</p>}
+                            <button type="button" onClick={() => viewClaimReceipt(item.claim_id)}
+                              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
+                              View receipt
+                            </button>
+                          </>
+                        ) : isLeave ? (
                           <>
                             <p className="mt-1 text-sm text-slate-500">
                               {item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
@@ -390,7 +454,7 @@ export default function ApprovalsPage() {
                         {isLeave && item.is_late_submission && (
                           <span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-600">Late submission</span>
                         )}
-                        {!isLeave && item.requester_name && (
+                        {!isLeave && !isClaim && item.requester_name && (
                           <p className="mt-1 text-xs text-slate-400">Requested by: {item.requester_name}</p>
                         )}
                       </div>
@@ -426,7 +490,7 @@ export default function ApprovalsPage() {
           {/* Filters */}
           <div className="flex flex-wrap items-center gap-3 mb-5 pb-5 border-b border-slate-100">
             <div className="flex gap-1.5">
-              {['ALL', 'LEAVE', 'BUDGET'].map((c) => (
+              {['ALL', 'LEAVE', 'BUDGET', 'CLAIM'].map((c) => (
                 <button key={c} type="button" onClick={() => setHistoryCategory(c)}
                   className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                     historyCategory === c ? 'bg-[#1540A8] text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
@@ -467,26 +531,39 @@ export default function ApprovalsPage() {
               {filteredHistory.map((row) => {
                 const item = row.raw;
                 const isLeave = row.type === 'LEAVE';
+                const isClaim = row.type === 'CLAIM';
                 const duration = isLeave ? daysBetween(item.start_date, item.end_date) : null;
-                const decidedOn = formatDateTime(isLeave ? item.updated_at : item.reviewed_at);
-                const reviewerName = item.reviewer_name;
+                const decidedOn = formatDateTime(isLeave ? item.updated_at : isClaim ? item.manager_reviewed_at : item.reviewed_at);
+                const reviewerName = isClaim ? item.manager_reviewer_name : item.reviewer_name;
+                const remarks = isClaim ? item.manager_remarks : item.reviewer_remarks;
                 return (
                   <div key={row.key} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                          {isLeave ? `Leave — ${item.full_name}` : `Budget — ${item.project_code}`}
+                          {isLeave ? `Leave — ${item.full_name}` : isClaim ? `Claim — ${item.claimant_name}` : `Budget — ${item.project_code}`}
                         </p>
                         <p className="mt-1 text-base font-semibold text-slate-900">
                           {isLeave
                             ? <>{item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
                                 {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}</>
-                            : <>{item.project_name || item.project_code} • {item.requested_hours} hrs</>}
+                            : isClaim
+                              ? <>{item.merchant} • {formatDateOnly(item.purchase_date)} • {money(item.currency, item.total_amount)}</>
+                              : <>{item.project_name || item.project_code} • {item.requested_hours} hrs</>}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           {statusBadge(row.status)}
-                          {item.reviewer_remarks && <span className="text-xs text-slate-500 italic">"{item.reviewer_remarks}"</span>}
+                          {remarks && <span className="text-xs text-slate-500 italic">"{remarks}"</span>}
+                          {isClaim && item.status === 'REJECTED' && item.hr_reviewed_by && <span className="text-xs text-red-600">Later rejected by HR</span>}
+                          {isClaim && item.status === 'APPROVED' && <span className="text-xs text-slate-500">Approved by HR</span>}
+                          {isClaim && item.status === 'PAID' && <span className="text-xs text-slate-500">Paid</span>}
                         </div>
+                        {isClaim && (
+                          <button type="button" onClick={() => viewClaimReceipt(item.claim_id)}
+                            className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
+                            View receipt
+                          </button>
+                        )}
                         {isLeave && item.category === 'SICK' && (
                           item.mc_file_url ? (
                             <button type="button" onClick={() => openMcFile(item.mc_file_url)}
@@ -524,10 +601,12 @@ export default function ApprovalsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
           <div className="w-full max-w-lg rounded-3xl bg-white p-8 shadow-2xl">
             <h2 className="text-xl font-semibold text-slate-900 mb-1">
-              {reviewModal.isHistory ? 'Edit Past Decision' : (reviewModal.type === 'BUDGET' ? 'Review Budget Request' : 'Review Leave Request')}
+              {reviewModal.isHistory ? 'Edit Past Decision' : (reviewModal.type === 'BUDGET' ? 'Review Budget Request' : reviewModal.type === 'CLAIMS' ? 'Review Claim' : 'Review Leave Request')}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
-              {reviewModal.type === 'BUDGET' ? (
+              {reviewModal.type === 'CLAIMS' ? (
+                <><strong>{reviewModal.item.claimant_name}</strong> — {reviewModal.item.merchant} • {formatDateOnly(reviewModal.item.purchase_date)} • {money(reviewModal.item.currency, reviewModal.item.total_amount)}</>
+              ) : reviewModal.type === 'BUDGET' ? (
                 <><strong>{reviewModal.item.project_code}</strong> — {reviewModal.item.project_name || reviewModal.item.project_code} • {reviewModal.item.requested_hours} hrs requested</>
               ) : (
                 <><strong>{reviewModal.item.full_name}</strong> — {reviewModal.item.category} •{' '}
