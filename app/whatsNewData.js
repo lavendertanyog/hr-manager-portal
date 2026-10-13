@@ -54,3 +54,14 @@ export const WHATS_NEW = [
 ];
 export const WHATS_NEW_LATEST_ID = WHATS_NEW[0].id;
 export const WHATS_NEW_SEEN_KEY = 'manager_portal_whats_new_seen';
+
+// Short summary shown in the one-time update notice after login (see UpdateNotice.js). Keep it to
+// three lines and update it with each release; the full list stays in WHATS_NEW above.
+export const WHATS_NEW_NOTICE = {
+  portal: "Manager portal",
+  highlights: [
+    { icon: "undo", lead: "Undo works", text: "on leave and budget decisions, for 10 minutes" },
+    { icon: "calendar", lead: "Company calendar", text: "shows who is on leave" },
+    { icon: "lock", lead: "Remember me", text: "keeps you signed in for 30 days" },
+  ],
+};
