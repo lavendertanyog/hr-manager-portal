@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import axios from 'axios';
 import { formatLeaveDate, openMcFile } from '../leaveFormat';
 import { useConfirm } from '../ConfirmDialog';
@@ -36,8 +37,17 @@ function statusBadge(status) {
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${colors[s] || 'bg-slate-100 text-slate-600'}`}>{s}</span>;
 }
 
-export default function ApprovalsPage() {
+const TAB_IDS = ['LEAVE', 'BUDGET', 'CLAIMS', 'HISTORY'];
+
+function ApprovalsContent() {
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState('LEAVE');
+  // ?tab=LEAVE|BUDGET|CLAIMS|HISTORY opens that tab (used by the top bar's notifications and
+  // search). Watched, not just read once, so it also switches tab while already on this page.
+  const tabParam = searchParams.get('tab');
+  useEffect(() => {
+    if (TAB_IDS.includes(tabParam)) setActiveTab(tabParam);
+  }, [tabParam]);
   const [leaveRecords, setLeaveRecords] = useState([]);
   const [budgetRecords, setBudgetRecords] = useState([]);
   const [historyRecords, setHistoryRecords] = useState([]);
@@ -688,5 +698,13 @@ export default function ApprovalsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ApprovalsPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-slate-400 text-sm">Loading…</div>}>
+      <ApprovalsContent />
+    </Suspense>
   );
 }
