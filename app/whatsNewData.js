@@ -5,6 +5,9 @@ export const WHATS_NEW = [
     id: 4,
     date: '12 Oct 2026',
     title: 'Leave approvals: Undo, MC and team-only history',
+    icon: "undo",
+    summary: "Undo works, View MC opens, and History shows only your team",
+    chips: ['Undo works','View MC opens','Team-only history'],
     body: 'Several things on Dashboard and Approvals now work the way you’d expect.',
     points: [
       { icon: "undo", lead: "Undo", text: "on an approval or rejection puts the request back to Pending (for 10 minutes)" },
@@ -19,6 +22,9 @@ export const WHATS_NEW = [
     id: 3,
     date: '12 Oct 2026',
     title: 'Budget requests: your projects only, and Undo',
+    icon: "filter",
+    summary: "Only your projects, plus Undo on budget decisions",
+    chips: ['Your projects only','Undo on budget','No more Refer to AM'],
     body: 'You now see and review budget requests only for projects you manage.',
     points: [
       { icon: "filter", lead: "Dashboard and Approvals", text: "list requests for your projects only" },
@@ -31,6 +37,9 @@ export const WHATS_NEW = [
     id: 2,
     date: '12 Oct 2026',
     title: 'Company calendar and project statuses',
+    icon: "calendar",
+    summary: "See who is on leave, and project Deployed and Maintenance statuses",
+    chips: ['Company calendar','Leave stays private','Deployed and Maintenance'],
     body: 'See who is on leave and when the public holidays are.',
     points: [
       { icon: "calendar", lead: "New Calendar page", text: "in the sidebar shows approved leave by name, in Month or List view, plus public holidays" },
@@ -42,6 +51,9 @@ export const WHATS_NEW = [
     id: 1,
     date: '12 Oct 2026',
     title: 'Remember me on this device',
+    icon: "signin",
+    summary: "Stay signed in on this device for 30 days",
+    chips: ['30 days','Remembered devices','Not you?'],
     body: 'Tick "Remember me on this device" when you log in and you’ll stay signed in on that browser for 30 days. Next time, the portal signs you straight in without your password. You’ll be asked to log in once after this update.',
     points: [
       { icon: "signin", lead: "Log out", text: "ends the sign-in but keeps your email filled in, partly hidden" },
