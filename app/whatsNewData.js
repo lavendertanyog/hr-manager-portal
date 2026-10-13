@@ -7,12 +7,12 @@ export const WHATS_NEW = [
     title: 'Leave approvals: Undo, MC and team-only history',
     body: 'Several things on Dashboard and Approvals now work the way you’d expect.',
     points: [
-      'Undo on an approval or rejection now works, and puts the request back to Pending (for 10 minutes)',
-      'View MC Document opens the photo or PDF',
-      'Dates read like 31-Oct-2026',
-      'Approve, Reject and Bulk Approve ask in a proper window instead of a browser pop-up',
-      'History shows only your own team’s decisions, and only you or HR can change one',
-      'Removing someone from your team or a project now asks you first',
+      { icon: "undo", lead: "Undo", text: "on an approval or rejection puts the request back to Pending (for 10 minutes)" },
+      { icon: "file", lead: "View MC Document", text: "opens the photo or PDF" },
+      { icon: "calendar", lead: "Dates", text: "read like 31-Oct-2026" },
+      { icon: "window", lead: "Approve, Reject and Bulk Approve", text: "ask in a proper window instead of a browser pop-up" },
+      { icon: "users", lead: "History", text: "shows only your own team’s decisions, and only you or HR can change one" },
+      { icon: "shield", lead: "Removing someone", text: "from your team or a project now asks you first" },
     ],
   },
   {
@@ -21,10 +21,10 @@ export const WHATS_NEW = [
     title: 'Budget requests: your projects only, and Undo',
     body: 'You now see and review budget requests only for projects you manage.',
     points: [
-      'Dashboard and Approvals list requests for your projects only',
-      'You can no longer review a request for a project you don’t manage',
-      'Undo on a budget approval or rejection now works for 10 minutes, and the staff member is told it was withdrawn',
-      '"Refer to Account Manager" is gone — approving passes the request on to the Account Manager',
+      { icon: "filter", lead: "Dashboard and Approvals", text: "list requests for your projects only" },
+      { icon: "shield", lead: "You can no longer review", text: "a request for a project you don’t manage" },
+      { icon: "undo", lead: "Undo", text: "on a budget approval or rejection works for 10 minutes, and the staff member is told it was withdrawn" },
+      { icon: "check", lead: "\"Refer to Account Manager\" is gone", text: "— approving passes the request on to the Account Manager" },
     ],
   },
   {
@@ -33,9 +33,9 @@ export const WHATS_NEW = [
     title: 'Company calendar and project statuses',
     body: 'See who is on leave and when the public holidays are.',
     points: [
-      'New Calendar page in the sidebar shows approved leave by name, in Month or List view, plus public holidays',
-      'Leave type and reason stay private',
-      'Projects can now be Deployed or in Maintenance, and show that status',
+      { icon: "calendar", lead: "New Calendar page", text: "in the sidebar shows approved leave by name, in Month or List view, plus public holidays" },
+      { icon: "lock", lead: "Leave type and reason", text: "stay private" },
+      { icon: "folder", lead: "Projects", text: "can now be Deployed or in Maintenance, and show that status" },
     ],
   },
   {
@@ -44,11 +44,11 @@ export const WHATS_NEW = [
     title: 'Remember me on this device',
     body: 'Tick "Remember me on this device" when you log in and you’ll stay signed in on that browser for 30 days. Next time, the portal signs you straight in without your password. You’ll be asked to log in once after this update.',
     points: [
-      'Log out ends the sign-in but keeps your email filled in, partly hidden',
-      'Click "Not you?" on the login page to forget the email and use a different account',
-      'See and sign out your remembered devices from your Profile page',
-      'Changing your password signs out your other devices',
-      'Don’t tick it on a shared or public computer',
+      { icon: "signin", lead: "Log out", text: "ends the sign-in but keeps your email filled in, partly hidden" },
+      { icon: "users", lead: "Click \"Not you?\"", text: "on the login page to forget the email and use a different account" },
+      { icon: "list", lead: "See and sign out", text: "your remembered devices from your Profile page" },
+      { icon: "lock", lead: "Changing your password", text: "signs out your other devices" },
+      { icon: "shield", lead: "Don’t tick it", text: "on a shared or public computer" },
     ],
   },
 ];
