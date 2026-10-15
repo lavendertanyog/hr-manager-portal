@@ -7,6 +7,15 @@ import { formatLeaveDate, openMcFile } from '../leaveFormat';
 import { useConfirm } from '../ConfirmDialog';
 import { authHeaders } from '../authSession';
 
+// One line summing up a claim's charges and tax, e.g. "Service charge 5% 40.66 · SST 6% 48.79".
+const CHARGE_KIND_LABELS = { SERVICE_CHARGE: 'Service charge', TAX: 'Tax', ROUNDING: 'Rounding', DISCOUNT: 'Discount', OTHER: 'Other' };
+const chargesSummary = (c) => {
+  const lines = (c.charges || []).map((ch) => `${ch.label || CHARGE_KIND_LABELS[ch.kind] || ch.kind} ${ch.kind === 'DISCOUNT' ? '−' : ''}${Number(ch.amount).toFixed(2)}`);
+  if (lines.length === 0) return '';
+  return lines.join(' · ') + (c.tax_inclusive ? ' (prices include tax)' : '');
+};
+
+
 const money = (currency, amount) => `${currency} ${Number(amount || 0).toFixed(2)}`;
 
 function formatDateOnly(d) {
@@ -429,6 +438,7 @@ function ApprovalsContent() {
                                 {item.items.map((it) => `${it.quantity ? `${Number(it.quantity)} × ` : ''}${it.description}`).join(', ')}
                               </p>
                             )}
+                            {chargesSummary(item) && <p className="mt-1 text-xs text-slate-500">{chargesSummary(item)}</p>}
                             {item.project_code && <p className="mt-1 text-xs text-slate-500">Project: {item.project_code}{item.project_name ? ` · ${item.project_name}` : ''}</p>}
                             {item.notes && <p className="mt-1 text-xs text-slate-500 italic">&quot;{item.notes}&quot;</p>}
                             <button type="button" onClick={() => viewClaimReceipt(item.claim_id)}
