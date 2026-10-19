@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import axios from 'axios';
 import { formatLeaveDate, openMcFile } from '../leaveFormat';
 import { useConfirm } from '../ConfirmDialog';
+import { useT } from '../i18n/LanguageProvider';
 
 function formatDateOnly(d) {
   if (!d) return '—';
@@ -34,6 +35,7 @@ function statusBadge(status) {
 }
 
 export default function ApprovalsPage() {
+  const { t } = useT();
   const [activeTab, setActiveTab] = useState('LEAVE');
   const [leaveRecords, setLeaveRecords] = useState([]);
   const [budgetRecords, setBudgetRecords] = useState([]);
@@ -201,11 +203,11 @@ export default function ApprovalsPage() {
         if (reviewModal.isHistory) loadHistory();
         if (!reviewModal.isHistory) {
           showToast(
-            `${reviewAction === 'APPROVED' ? 'Approved' : 'Rejected'} ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name}.`,
+            t("{v} {v2} request for {name}.", { v: reviewAction === 'APPROVED' ? 'Approved' : 'Rejected', v2: reviewModal.type === 'BUDGET' ? 'budget' : 'leave', name: name }),
             () => {
               runUndo(reviewModal.type, id, reviewAction)
-                .then(() => { loadPending(); showToast(`Undone. The ${reviewModal.type === 'BUDGET' ? 'budget' : 'leave'} request for ${name} is pending again.`); })
-                .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use History to change the decision.'));
+                .then(() => { loadPending(); showToast(t("Undone. The {v} request for {name} is pending again.", { v: reviewModal.type === 'BUDGET' ? 'budget' : 'leave', name: name })); })
+                .catch((err) => showToast(t(err.response?.data?.error || 'Could not undo. Use History to change the decision.')));
             }
           );
         }
@@ -228,8 +230,8 @@ export default function ApprovalsPage() {
   const handleBulkApprove = async () => {
     if (selectedIds.length === 0) return;
     const confirmed = await confirm({
-      title: 'Bulk approve',
-      message: `Approve ${selectedIds.length} selected ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request(s)?`,
+      title: t("Bulk approve"),
+      message: t("Approve {length} selected {v} request(s)?", { length: selectedIds.length, v: activeTab === 'LEAVE' ? 'leave' : 'budget' }),
       confirmLabel: 'Approve',
     });
     if (!confirmed) return;
@@ -250,11 +252,11 @@ export default function ApprovalsPage() {
     await loadPending();
     setBulkSubmitting(false);
     if (failed === 0) {
-      showToast(`Approved ${succeeded} request(s).`);
+      showToast(t("Approved {succeeded} request(s).", { succeeded: succeeded }));
     } else if (succeeded === 0) {
-      showToast(`Bulk approve failed — ${failed} request(s) could not be processed (likely already handled elsewhere). List refreshed.`);
+      showToast(t("Bulk approve failed — {failed} request(s) could not be processed (likely already handled elsewhere). List refreshed.", { failed: failed }));
     } else {
-      showToast(`Approved ${succeeded} request(s); ${failed} could not be processed (likely already handled elsewhere). List refreshed.`);
+      showToast(t("Approved {succeeded} request(s); {failed} could not be processed (likely already handled elsewhere). List refreshed.", { succeeded: succeeded, failed: failed }));
     }
   };
 
@@ -300,8 +302,8 @@ export default function ApprovalsPage() {
       {/* Header */}
       <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
         <div>
-          <h1 className="mt-2 text-4xl font-semibold text-slate-950">Approvals</h1>
-          <p className="mt-1 text-sm text-slate-500">Review outstanding leave and budget requests.</p>
+          <h1 className="mt-2 text-4xl font-semibold text-slate-950">{t("Approvals")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("Review outstanding leave and budget requests.")}</p>
         </div>
       </div>
 
@@ -309,16 +311,16 @@ export default function ApprovalsPage() {
       <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
         <div className="flex flex-wrap gap-1 border-b border-gray-100 px-4 pt-4">
           {[
-            { id: 'LEAVE', label: `Leave Requests (${leaveRecords.length})` },
-            { id: 'BUDGET', label: `Budget Escalations (${budgetRecords.length})` },
-            { id: 'HISTORY', label: 'History' },
-          ].map((t) => (
+            { id: 'LEAVE', label: t("Leave Requests ({length})", { length: leaveRecords.length }) },
+            { id: 'BUDGET', label: t("Budget Escalations ({length})", { length: budgetRecords.length }) },
+            { id: 'HISTORY', label: t("History") },
+          ].map((tabItem) => (
             <button
-              key={t.id}
-              className={`rounded-t-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === t.id ? 'bg-[#e8edf8] text-[#1a3a8f]' : 'text-slate-500 hover:text-slate-700'}`}
-              onClick={() => setActiveTab(t.id)}
+              key={tabItem.id}
+              className={`rounded-t-xl px-4 py-2.5 text-sm font-semibold transition ${activeTab === tabItem.id ? 'bg-[#e8edf8] text-[#1a3a8f]' : 'text-slate-500 hover:text-slate-700'}`}
+              onClick={() => setActiveTab(tabItem.id)}
             >
-              {t.label}
+              {t(tabItem.label)}
             </button>
           ))}
         </div>
@@ -332,12 +334,10 @@ export default function ApprovalsPage() {
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-600 cursor-pointer">
                   <input type="checkbox" checked={allSelected}
                     onChange={(e) => setSelectedIds(e.target.checked ? currentPendingList.map(currentIdOf) : [])}
-                    className="rounded border-slate-300" />
-                  Select All
-                </label>
+                    className="rounded border-slate-300" />{t("Select All")}</label>
                 <button type="button" onClick={handleBulkApprove} disabled={selectedIds.length === 0 || bulkSubmitting}
                   className="rounded-2xl bg-[#1540A8] px-4 py-2 text-xs font-semibold text-white disabled:opacity-40 hover:bg-[#12378F]">
-                  {bulkSubmitting ? 'Approving…' : `Bulk Approve${selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}`}
+                  {bulkSubmitting ? t("Approving…") : t("Bulk Approve{v}", { v: selectedIds.length > 0 ? ` (${selectedIds.length})` : '' })}
                 </button>
               </div>
             )}
@@ -345,9 +345,7 @@ export default function ApprovalsPage() {
 
           <div className="space-y-3">
             {currentPendingList.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
-                No pending {activeTab === 'LEAVE' ? 'leave' : 'budget'} requests.
-              </div>
+              <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">{t("No pending")}{" "}{activeTab === 'LEAVE' ? t("leave") : t("budget")}{" "}{t("requests.")}</div>
             ) : currentPendingList.map((item) => {
               const id = currentIdOf(item);
               const isLeave = activeTab === 'LEAVE';
@@ -360,38 +358,35 @@ export default function ApprovalsPage() {
                       <input type="checkbox" checked={selectedIds.includes(id)} onChange={() => toggleSelected(id)}
                         className="mt-1.5 rounded border-slate-300" />
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{isLeave ? 'Leave Request' : 'Budget Request'}</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{isLeave ? t("Leave Request") : t("Budget Request")}</p>
                         <h3 className="mt-1 text-lg font-semibold text-slate-900">{isLeave ? item.full_name : (item.project_name || item.project_code)}</h3>
                         {isLeave ? (
                           <>
                             <p className="mt-1 text-sm text-slate-500">
-                              {item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
-                              {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}
+                              {t(item.category)} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
+                              {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">{t("({duration} Day", { duration: duration })}{duration !== 1 ? 's' : ''})</span>}
                             </p>
                             {balance && (
-                              <p className="mt-1 text-xs text-slate-500">
-                                Leave balance: <span className="font-semibold text-slate-700">{balance.remainingDays}/{balance.totalDays} days remaining</span>
+                              <p className="mt-1 text-xs text-slate-500">{t("Leave balance:")}{" "}<span className="font-semibold text-slate-700">{t("{remainingDays}/{totalDays} days remaining", { remainingDays: balance.remainingDays, totalDays: balance.totalDays })}</span>
                               </p>
                             )}
                             {item.category === 'SICK' && (
                               item.mc_file_url ? (
                                 <button type="button" onClick={() => openMcFile(item.mc_file_url)}
-                                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
-                                  View MC Document
-                                </button>
+                                  className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">{t("View MC Document")}</button>
                               ) : (
-                                <p className="mt-1.5 text-xs font-medium text-amber-600">MC not yet uploaded</p>
+                                <p className="mt-1.5 text-xs font-medium text-amber-600">{t("MC not yet uploaded")}</p>
                               )
                             )}
                           </>
                         ) : (
-                          <p className="mt-1 text-sm text-slate-500">{item.project_code} • {item.requested_hours} hrs requested</p>
+                          <p className="mt-1 text-sm text-slate-500">{t("{project_code} • {requested_hours} hrs requested", { project_code: item.project_code, requested_hours: item.requested_hours })}</p>
                         )}
                         {isLeave && item.is_late_submission && (
-                          <span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-600">Late submission</span>
+                          <span className="mt-1.5 inline-block rounded-full bg-orange-100 px-2.5 py-0.5 text-xs font-semibold text-orange-600">{t("Late submission")}</span>
                         )}
                         {!isLeave && item.requester_name && (
-                          <p className="mt-1 text-xs text-slate-400">Requested by: {item.requester_name}</p>
+                          <p className="mt-1 text-xs text-slate-400">{t("Requested by: {requester_name}", { requester_name: item.requester_name })}</p>
                         )}
                       </div>
                     </div>
@@ -399,11 +394,11 @@ export default function ApprovalsPage() {
                       <button
                         onClick={() => openReviewModal(item, activeTab, false, 'APPROVED')}
                         className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white hover:bg-[#12378F]"
-                      >Approve</button>
+                      >{t("Approve")}</button>
                       <button
                         onClick={() => openReviewModal(item, activeTab, false, 'REJECTED')}
                         className="rounded-2xl border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:border-red-400 hover:text-red-600"
-                      >Reject</button>
+                      >{t("Reject")}</button>
                     </div>
                   </div>
                 </div>
@@ -418,8 +413,8 @@ export default function ApprovalsPage() {
         <div className="p-6">
           <div className="flex items-center justify-between mb-5">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">Decision History</p>
-              <h2 className="mt-1 text-2xl font-semibold text-slate-950">All reviewed requests</h2>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">{t("Decision History")}</p>
+              <h2 className="mt-1 text-2xl font-semibold text-slate-950">{t("All reviewed requests")}</h2>
             </div>
           </div>
 
@@ -450,18 +445,18 @@ export default function ApprovalsPage() {
                 <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
               </svg>
               <input type="text" value={historySearch} onChange={(e) => setHistorySearch(e.target.value)}
-                placeholder="Search staff name…"
+                placeholder={t("Search staff name…")}
                 className="rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-4 py-1.5 text-sm text-slate-900 w-48 focus:outline-none focus:ring-2 focus:ring-blue-500" />
             </div>
             <input type="date" value={historyDateFrom} onChange={(e) => setHistoryDateFrom(e.target.value)}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <span className="text-xs text-slate-400">to</span>
+            <span className="text-xs text-slate-400">{t("to")}</span>
             <input type="date" value={historyDateTo} onChange={(e) => setHistoryDateTo(e.target.value)}
               className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-1.5 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           </div>
 
           {filteredHistory.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">No reviewed records match this filter.</div>
+            <div className="rounded-2xl border border-dashed border-slate-200 p-8 text-center text-slate-500">{t("No reviewed records match this filter.")}</div>
           ) : (
             <div className="space-y-3">
               {filteredHistory.map((row) => {
@@ -475,13 +470,13 @@ export default function ApprovalsPage() {
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-400">
-                          {isLeave ? `Leave — ${item.full_name}` : `Budget — ${item.project_code}`}
+                          {isLeave ? t("Leave — {full_name}", { full_name: item.full_name }) : t("Budget — {project_code}", { project_code: item.project_code })}
                         </p>
                         <p className="mt-1 text-base font-semibold text-slate-900">
                           {isLeave
-                            ? <>{item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
-                                {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}</>
-                            : <>{item.project_name || item.project_code} • {item.requested_hours} hrs</>}
+                            ? <>{t(item.category)} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
+                                {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">{t("({duration} Day", { duration: duration })}{duration !== 1 ? 's' : ''})</span>}</>
+                            : <>{item.project_name || item.project_code}{" "}{t("• {requested_hours} hrs", { requested_hours: item.requested_hours })}</>}
                         </p>
                         <div className="mt-2 flex flex-wrap items-center gap-2">
                           {statusBadge(row.status)}
@@ -490,24 +485,20 @@ export default function ApprovalsPage() {
                         {isLeave && item.category === 'SICK' && (
                           item.mc_file_url ? (
                             <button type="button" onClick={() => openMcFile(item.mc_file_url)}
-                              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">
-                              View MC Document
-                            </button>
+                              className="mt-1.5 inline-flex items-center gap-1 text-xs font-semibold text-emerald-700 hover:text-emerald-800 underline">{t("View MC Document")}</button>
                           ) : (
-                            <p className="mt-1.5 text-xs font-medium text-amber-600">MC not yet uploaded</p>
+                            <p className="mt-1.5 text-xs font-medium text-amber-600">{t("MC not yet uploaded")}</p>
                           )
                         )}
                         {decidedOn && (
                           <p className="mt-1.5 text-xs text-slate-400">
-                            {String(row.status).toUpperCase() === 'REJECTED' ? 'Rejected' : 'Approved'} on {decidedOn}{reviewerName ? ` by ${reviewerName}` : ''}
+                            {String(row.status).toUpperCase() === 'REJECTED' ? t("Rejected") : t("Approved")}{" "}{t("on {decidedOn}", { decidedOn: decidedOn })}{reviewerName ? t(" by {reviewerName}", { reviewerName: reviewerName }) : ''}
                           </p>
                         )}
                       </div>
                       {isLeave && (
                         <button onClick={() => openReviewModal(item, 'LEAVE', true)}
-                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-                          Edit
-                        </button>
+                          className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">{t("Edit")}</button>
                       )}
                     </div>
                   </div>
@@ -524,26 +515,22 @@ export default function ApprovalsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4">
           <div className="w-full max-w-lg rounded-3xl bg-white p-8 shadow-2xl">
             <h2 className="text-xl font-semibold text-slate-900 mb-1">
-              {reviewModal.isHistory ? 'Edit Past Decision' : (reviewModal.type === 'BUDGET' ? 'Review Budget Request' : 'Review Leave Request')}
+              {reviewModal.isHistory ? t("Edit Past Decision") : (reviewModal.type === 'BUDGET' ? t("Review Budget Request") : t("Review Leave Request"))}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
               {reviewModal.type === 'BUDGET' ? (
-                <><strong>{reviewModal.item.project_code}</strong> — {reviewModal.item.project_name || reviewModal.item.project_code} • {reviewModal.item.requested_hours} hrs requested</>
+                <><strong>{reviewModal.item.project_code}</strong> — {reviewModal.item.project_name || reviewModal.item.project_code}{" "}{t("• {requested_hours} hrs requested", { requested_hours: reviewModal.item.requested_hours })}</>
               ) : (
-                <><strong>{reviewModal.item.full_name}</strong> — {reviewModal.item.category} •{' '}
-                START DATE: {formatDateOnly(reviewModal.item.start_date)} - END DATE: {formatDateOnly(reviewModal.item.end_date)}
-                {(() => { const d = daysBetween(reviewModal.item.start_date, reviewModal.item.end_date); return d ? ` (${d} Day${d !== 1 ? 's' : ''})` : ''; })()}
+                <><strong>{reviewModal.item.full_name}</strong>{" "}{t("— {category} • START DATE: {formatDateOnly} - END DATE: {formatDateOnly2}", { category: reviewModal.item.category, formatDateOnly: formatDateOnly(reviewModal.item.start_date), formatDateOnly2: formatDateOnly(reviewModal.item.end_date) })}{" "}{(() => { const d = daysBetween(reviewModal.item.start_date, reviewModal.item.end_date); return d ? ` (${d} Day${d !== 1 ? 's' : ''})` : ''; })()}
                 </>
               )}
             </p>
             {reviewModal.isHistory && (
-              <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-700">
-                Changing a past decision can impact payroll or project tracking. A reason is required.
-              </div>
+              <div className="mb-4 rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-700">{t("Changing a past decision can impact payroll or project tracking. A reason is required.")}</div>
             )}
 
             <div className="mb-4">
-              <label className="block text-sm font-semibold text-slate-700 mb-2">Decision</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-2">{t("Decision")}</label>
               <div className="flex gap-3">
                 {['APPROVED', 'REJECTED'].map((a) => (
                   <button
@@ -555,7 +542,7 @@ export default function ApprovalsPage() {
                         : 'border border-slate-200 bg-slate-50 text-slate-700'
                     }`}
                   >
-                    {a === 'APPROVED' ? '✓ Approve' : '✕ Reject'}
+                    {a === 'APPROVED' ? t("✓ Approve") : t("✕ Reject")}
                   </button>
                 ))}
               </div>
@@ -563,14 +550,14 @@ export default function ApprovalsPage() {
 
             <div className="mb-5">
               <label className="block text-sm font-semibold text-slate-700 mb-2">
-                {reviewModal.isHistory ? 'Reason for change' : 'Remark'}
-                {(reviewModal.isHistory || reviewAction === 'REJECTED') ? <span className="text-red-500"> *</span> : <span className="font-normal text-slate-400"> (optional)</span>}
+                {reviewModal.isHistory ? t("Reason for change") : t("Remark")}
+                {(reviewModal.isHistory || reviewAction === 'REJECTED') ? <span className="text-red-500"> *</span> : <span className="font-normal text-slate-400">{t("(optional)")}</span>}
               </label>
               <textarea
                 rows={3}
                 value={reviewRemark}
                 onChange={(e) => setReviewRemark(e.target.value)}
-                placeholder={reviewModal.isHistory ? 'Why is this past decision being changed?' : 'Add a note for the staff member…'}
+                placeholder={reviewModal.isHistory ? t("Why is this past decision being changed?") : t("Add a note for the staff member…")}
                 className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
               {reviewError && <p className="mt-2 text-sm font-medium text-red-500">{reviewError}</p>}
@@ -584,13 +571,13 @@ export default function ApprovalsPage() {
               <button
                 onClick={() => setReviewModal(null)}
                 className="rounded-2xl border border-slate-200 px-5 py-2.5 text-sm font-semibold text-slate-700"
-              >Cancel</button>
+              >{t("Cancel")}</button>
               <button
                 onClick={submitModalReview}
                 disabled={submitting}
                 className="rounded-2xl bg-[#1540A8] px-5 py-2.5 text-sm font-semibold text-white disabled:opacity-60"
               >
-                {submitting ? 'Submitting…' : reviewModal.isHistory ? 'Update Decision' : 'Submit'}
+                {submitting ? t("Submitting…") : reviewModal.isHistory ? t("Update Decision") : t("Submit")}
               </button>
             </div>
           </div>
@@ -601,9 +588,9 @@ export default function ApprovalsPage() {
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl bg-slate-900 px-5 py-4 text-sm font-medium text-white shadow-2xl">
-          <span>{toast.message}</span>
+          <span>{t(toast.message)}</span>
           {toast.onUndo && (
-            <button onClick={toast.onUndo} className="font-bold text-blue-300 hover:text-blue-200">Undo</button>
+            <button onClick={toast.onUndo} className="font-bold text-blue-300 hover:text-blue-200">{t("Undo")}</button>
           )}
           <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white">&times;</button>
         </div>

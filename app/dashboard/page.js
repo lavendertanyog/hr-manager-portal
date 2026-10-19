@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import { formatLeaveDate } from '../leaveFormat';
 import { useConfirm } from '../ConfirmDialog';
+import { useT } from '../i18n/LanguageProvider';
 
 function deriveNameFromEmail(email) {
   return String(email || '')
@@ -18,6 +19,7 @@ function deriveNameFromEmail(email) {
 const DEFAULT_WEEKLY_CAPACITY = 40;
 
 export default function ManagerDashboard() {
+  const { t } = useT();
   const router = useRouter();
   const [activeTab, setActiveTab] = useState('LEAVE');
   const [pendingLeave, setPendingLeave] = useState([]);
@@ -177,7 +179,7 @@ export default function ManagerDashboard() {
       return { ok: true };
     } catch (error) {
       console.error('Approval action failed:', error);
-      return { ok: false, message: error.response?.data?.error || 'Something went wrong — please try again.' };
+      return { ok: false, message: error.response?.data?.error || t("Something went wrong — please try again.") };
     }
   };
 
@@ -185,8 +187,8 @@ export default function ManagerDashboard() {
     const id = activeTab === 'LEAVE' ? item.leave_id : item.request_id;
     const name = activeTab === 'LEAVE' ? item.full_name : (item.project_name || item.project_code);
     const confirmed = await confirm({
-      title: action === 'APPROVED' ? 'Approve request' : 'Reject request',
-      message: `${action === 'APPROVED' ? 'Approve' : 'Reject'} this ${activeTab === 'LEAVE' ? 'leave' : 'budget'} request for ${name}?`,
+      title: action === 'APPROVED' ? t("Approve request") : t("Reject request"),
+      message: t("{v} this {v2} request for {name}?", { v: action === 'APPROVED' ? 'Approve' : 'Reject', v2: activeTab === 'LEAVE' ? 'leave' : 'budget', name: name }),
       confirmLabel: action === 'APPROVED' ? 'Approve' : 'Reject',
       danger: action !== 'APPROVED',
     });
@@ -196,32 +198,32 @@ export default function ManagerDashboard() {
       if (!result.ok) { showToast(result.message); return; }
       const kind = activeTab === 'LEAVE' ? 'leave' : 'budget';
       showToast(
-        `${action === 'APPROVED' ? 'Approved' : 'Rejected'} ${kind} request for ${name}.`,
+        t("{v} {kind} request for {name}.", { v: action === 'APPROVED' ? 'Approved' : 'Rejected', kind: kind, name: name }),
         () => {
           const undo = kind === 'leave'
             ? axios.patch(`${backendBaseUrl}/api/v1/leave/undo-review`, { leaveId: id, reviewerId: managerId })
             : axios.patch(`${backendBaseUrl}/api/v1/projects/budget-request/undo-review`, { requestId: id, reviewerId: managerId });
           return undo
             .then(() => reloadApprovals())
-            .then(() => showToast(`Undone. The ${kind} request for ${name} is pending again.`))
-            .catch((err) => showToast(err.response?.data?.error || 'Could not undo. Use Approvals > History to change the decision.'));
+            .then(() => showToast(t("Undone. The {kind} request for {name} is pending again.", { kind: kind, name: name })))
+            .catch((err) => showToast(t(err.response?.data?.error || 'Could not undo. Use Approvals > History to change the decision.')));
         }
       );
     });
   };
 
   const stats = [
-    { key: null, label: 'Total Active Projects', value: projects.length, onClick: () => router.push('/project-codes') },
-    { key: 'LEAVE', label: 'Pending Leave Requests', value: pendingLeave.length, onClick: () => { setActiveTab('LEAVE'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
-    { key: 'BUDGET', label: 'Pending Budget Requests', value: pendingBudget.length, onClick: () => { setActiveTab('BUDGET'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
+    { key: null, label: t("Total Active Projects"), value: projects.length, onClick: () => router.push('/project-codes') },
+    { key: 'LEAVE', label: t("Pending Leave Requests"), value: pendingLeave.length, onClick: () => { setActiveTab('LEAVE'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
+    { key: 'BUDGET', label: t("Pending Budget Requests"), value: pendingBudget.length, onClick: () => { setActiveTab('BUDGET'); approvalsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }); } },
   ];
 
   return (
     <div className="p-8">
       <div className="mb-10">
-        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">Manager Dashboard</p>
-        <h1 className="mt-3 text-4xl font-semibold text-slate-950">Welcome back, {managerName}</h1>
-        <p className="mt-2 text-sm text-slate-500">Monitor approvals, project codes, and team workload in one place.</p>
+        <p className="text-sm uppercase tracking-[0.32em] text-slate-500">{t("Manager Dashboard")}</p>
+        <h1 className="mt-3 text-4xl font-semibold text-slate-950">{t("Welcome back, {managerName}", { managerName: managerName })}</h1>
+        <p className="mt-2 text-sm text-slate-500">{t("Monitor approvals, project codes, and team workload in one place.")}</p>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-3 mb-10">
@@ -230,7 +232,7 @@ export default function ManagerDashboard() {
             className={`text-left rounded-3xl border bg-white p-6 shadow-sm transition cursor-pointer ${
               item.key && activeTab === item.key ? 'border-[#1a3a8f] ring-2 ring-[#1a3a8f]/30' : 'border-slate-200 hover:shadow-md hover:border-slate-300'
             }`}>
-            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{item.label}</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-slate-400">{t(item.label)}</p>
             <p className="mt-4 text-4xl font-semibold text-slate-950">{item.value}</p>
           </button>
         ))}
@@ -242,31 +244,27 @@ export default function ManagerDashboard() {
             <button
               onClick={() => setActiveTab('LEAVE')}
               className={`rounded-full px-5 py-3 text-sm font-semibold ${activeTab === 'LEAVE' ? 'bg-[#1540A8] text-white shadow-[0_12px_24px_rgba(21,64,168,0.24)]' : 'bg-[#E8EEFF] text-[#163EAF]'}`}
-            >
-              Leave Requests {pendingLeave.length > 0 && <span className="ml-1.5 bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5">{pendingLeave.length}</span>}
+            >{t("Leave Requests")}{" "}{pendingLeave.length > 0 && <span className="ml-1.5 bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5">{pendingLeave.length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('BUDGET')}
               className={`rounded-full px-5 py-3 text-sm font-semibold ${activeTab === 'BUDGET' ? 'bg-[#1540A8] text-white shadow-[0_12px_24px_rgba(21,64,168,0.24)]' : 'bg-[#E8EEFF] text-[#163EAF]'}`}
-            >
-              Budget Requests {pendingBudget.length > 0 && <span className="ml-1.5 bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5">{pendingBudget.length}</span>}
+            >{t("Budget Requests")}{" "}{pendingBudget.length > 0 && <span className="ml-1.5 bg-red-500 text-white rounded-full text-xs px-1.5 py-0.5">{pendingBudget.length}</span>}
             </button>
             <button
               onClick={() => setActiveTab('HISTORY')}
               className={`rounded-full px-5 py-3 text-sm font-semibold ${activeTab === 'HISTORY' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}
-            >
-              History
-            </button>
+            >{t("History")}</button>
           </div>
 
           {activeTab === 'HISTORY' ? (
             <div>
               <div className="flex gap-3 mb-4">
-                <button onClick={() => setActiveHistoryType('LEAVE')} className={`rounded-full px-4 py-2 text-xs font-semibold ${activeHistoryType === 'LEAVE' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>Leave</button>
-                <button onClick={() => setActiveHistoryType('BUDGET')} className={`rounded-full px-4 py-2 text-xs font-semibold ${activeHistoryType === 'BUDGET' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>Budget</button>
+                <button onClick={() => setActiveHistoryType('LEAVE')} className={`rounded-full px-4 py-2 text-xs font-semibold ${activeHistoryType === 'LEAVE' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>{t("Leave")}</button>
+                <button onClick={() => setActiveHistoryType('BUDGET')} className={`rounded-full px-4 py-2 text-xs font-semibold ${activeHistoryType === 'BUDGET' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>{t("Budget")}</button>
               </div>
               {(activeHistoryType === 'LEAVE' ? historyLeave : historyBudget).length === 0 ? (
-                <div className="rounded-3xl border border-dashed border-slate-200 p-8 text-center text-slate-500">No history found.</div>
+                <div className="rounded-3xl border border-dashed border-slate-200 p-8 text-center text-slate-500">{t("No history found.")}</div>
               ) : (
                 <div className="space-y-4">
                   {(activeHistoryType === 'LEAVE' ? historyLeave : historyBudget).map((item) => {
@@ -282,11 +280,11 @@ export default function ManagerDashboard() {
                       <div key={key} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                         <div className="flex flex-wrap items-start justify-between gap-4">
                           <div>
-                            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{isLeave ? 'Leave' : 'Budget'}</p>
-                            <h3 className="mt-2 text-xl font-semibold text-slate-950">{title}</h3>
+                            <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{isLeave ? t("Leave") : t("Budget")}</p>
+                            <h3 className="mt-2 text-xl font-semibold text-slate-950">{t(title)}</h3>
                             <p className="mt-2 text-sm text-slate-500">{sub}</p>
                           </div>
-                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>{statusLabel}</span>
+                          <span className={`rounded-full px-3 py-1 text-xs font-semibold ${statusColor}`}>{t(statusLabel)}</span>
                         </div>
                       </div>
                     );
@@ -295,9 +293,7 @@ export default function ManagerDashboard() {
               )}
             </div>
           ) : (activeTab === 'LEAVE' ? pendingLeave : pendingBudget).length === 0 ? (
-            <div className="rounded-3xl border border-dashed border-slate-200 p-8 text-center text-slate-500">
-              No pending approvals found.
-            </div>
+            <div className="rounded-3xl border border-dashed border-slate-200 p-8 text-center text-slate-500">{t("No pending approvals found.")}</div>
           ) : (
             <div className="space-y-4">
               {(activeTab === 'LEAVE' ? pendingLeave : pendingBudget).map((item) => {
@@ -311,26 +307,22 @@ export default function ManagerDashboard() {
                   <div key={key} className="rounded-3xl border border-slate-200 bg-slate-50 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{activeTab === 'LEAVE' ? 'Leave request' : 'Budget request'}</p>
-                        <h3 className="mt-2 text-xl font-semibold text-slate-950">{title}</h3>
-                        <p className="mt-2 text-sm text-slate-500">{subtitle}</p>
+                        <p className="text-sm font-semibold uppercase tracking-[0.25em] text-slate-500">{activeTab === 'LEAVE' ? t("Leave request") : t("Budget request")}</p>
+                        <h3 className="mt-2 text-xl font-semibold text-slate-950">{t(title)}</h3>
+                        <p className="mt-2 text-sm text-slate-500">{t(subtitle)}</p>
                         {activeTab === 'BUDGET' && item.requester_name && (
-                          <p className="mt-1 text-xs text-slate-400">Requested by: {item.requester_name}</p>
+                          <p className="mt-1 text-xs text-slate-400">{t("Requested by: {requester_name}", { requester_name: item.requester_name })}</p>
                         )}
                       </div>
                       <div className="flex gap-3">
                         <button
                           onClick={() => handleReview(item, 'APPROVED')}
                           className="rounded-2xl bg-[#1540A8] px-4 py-2 text-sm font-semibold text-white"
-                        >
-                          Approve
-                        </button>
+                        >{t("Approve")}</button>
                         <button
                           onClick={() => handleReview(item, 'REJECTED')}
                           className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-red-400 hover:text-red-600"
-                        >
-                          Reject
-                        </button>
+                        >{t("Reject")}</button>
                       </div>
                     </div>
                   </div>
@@ -341,52 +333,48 @@ export default function ManagerDashboard() {
         </section>
 
         <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-2xl font-semibold text-slate-950 mb-4">Quick Allocation</h2>
+          <h2 className="text-2xl font-semibold text-slate-950 mb-4">{t("Quick Allocation")}</h2>
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Staff member</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">{t("Staff member")}</label>
               <select
                 value={allocation.userId}
                 onChange={(e) => setAllocation({ ...allocation, userId: e.target.value })}
                 className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
               >
-                <option value="">Select staff member</option>
+                <option value="">{t("Select staff member")}</option>
                 {staffList.map((s) => {
                   const used = workloadMap[s.user_id] || 0;
                   return (
-                    <option key={s.user_id} value={s.user_id}>
-                      {s.full_name} ({used}/{DEFAULT_WEEKLY_CAPACITY} hrs allocated)
-                    </option>
+                    <option key={s.user_id} value={s.user_id}>{t("{full_name} ({used}/{DEFAULT_WEEKLY_CAPACITY} hrs allocated)", { full_name: s.full_name, used: used, DEFAULT_WEEKLY_CAPACITY: DEFAULT_WEEKLY_CAPACITY })}</option>
                   );
                 })}
               </select>
               {allocation.userId && (
-                <p className="mt-1.5 text-xs text-slate-400">
-                  Currently allocated: {workloadMap[allocation.userId] || 0} / {DEFAULT_WEEKLY_CAPACITY} hrs per week
-                </p>
+                <p className="mt-1.5 text-xs text-slate-400">{t("Currently allocated:")}{" "}{workloadMap[allocation.userId] || 0}{" "}{t("/ {DEFAULT_WEEKLY_CAPACITY} hrs per week", { DEFAULT_WEEKLY_CAPACITY: DEFAULT_WEEKLY_CAPACITY })}</p>
               )}
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Project code</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">{t("Project code")}</label>
               <select
                 value={allocation.projectCode}
                 onChange={(e) => setAllocation({ ...allocation, projectCode: e.target.value })}
                 className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
               >
-                <option value="">Select project code</option>
+                <option value="">{t("Select project code")}</option>
                 {activeProjects.map((p) => (
                   <option key={p.project_code} value={p.project_code}>{p.project_code} — {p.project_name}</option>
                 ))}
               </select>
             </div>
             <div>
-              <label className="block text-sm font-semibold text-slate-700 mb-1">Hours per week</label>
+              <label className="block text-sm font-semibold text-slate-700 mb-1">{t("Hours per week")}</label>
               <input
                 type="number"
                 min="1"
                 value={allocation.hours}
                 onChange={(e) => setAllocation({ ...allocation, hours: e.target.value })}
-                placeholder="e.g. 8"
+                placeholder={t("e.g. 8")}
                 className="w-full rounded-3xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900"
               />
             </div>
@@ -396,7 +384,7 @@ export default function ManagerDashboard() {
               disabled={allocSubmitting}
               className="w-full rounded-3xl bg-[#1540A8] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {allocSubmitting ? 'Submitting…' : 'Submit'}
+              {allocSubmitting ? t("Submitting…") : t("Submit")}
             </button>
           </div>
         </aside>
@@ -406,9 +394,9 @@ export default function ManagerDashboard() {
 
       {toast && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-4 rounded-2xl bg-slate-900 px-5 py-4 text-sm font-medium text-white shadow-2xl">
-          <span>{toast.message}</span>
+          <span>{t(toast.message)}</span>
           {toast.onUndo && (
-            <button onClick={toast.onUndo} className="font-bold text-blue-300 hover:text-blue-200">Undo</button>
+            <button onClick={toast.onUndo} className="font-bold text-blue-300 hover:text-blue-200">{t("Undo")}</button>
           )}
           <button onClick={() => setToast(null)} className="text-slate-400 hover:text-white">&times;</button>
         </div>
