@@ -200,7 +200,7 @@ export default function SettingsPage() {
                   <button type="button" onClick={() => { setLanguage('en'); showLanguageSaved(); }} aria-pressed={lang === 'en'}
                     className={`flex items-center justify-between rounded-2xl px-4 py-3 text-left transition ${lang === 'en' ? 'border-2 border-[#1a3a8f] bg-[#f4f7ff]' : 'border border-slate-200 hover:bg-slate-50'}`}>
                     <span>
-                      <span className="block text-sm font-semibold text-slate-900">{t("English")}</span>
+                      <span className="block text-sm font-semibold text-slate-900">English</span>
                       <span className="block text-xs text-slate-500">{t("Default")}</span>
                     </span>
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={lang === 'en' ? '#1a3a8f' : '#cbd5e1'} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/>{lang === 'en' && <path d="M8 12l3 3 5-6"/>}</svg>
