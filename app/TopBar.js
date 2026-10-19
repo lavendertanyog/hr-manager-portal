@@ -2,9 +2,9 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { endSession } from './authSession';
-import { WHATS_NEW_LATEST_ID, WHATS_NEW_SEEN_KEY } from './whatsNewData';
+import axios from 'axios';
+import { useRouter, usePathname } from 'next/navigation';
+import { authHeaders, endSession } from './authSession';
 import { useT } from './i18n/LanguageProvider';
 
 function deriveNameFromEmail(email) {
@@ -12,58 +12,25 @@ function deriveNameFromEmail(email) {
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()).join(' ');
 }
 
-function WhatsNewButton() {
-  const { t } = useT();
-  const [seenId, setSeenId] = useState(0);
-
-  useEffect(() => {
-    try { setSeenId(Number(localStorage.getItem(WHATS_NEW_SEEN_KEY)) || 0); } catch {}
-  }, []);
-
-  const hasUnseen = seenId < WHATS_NEW_LATEST_ID;
-
-  const markSeen = () => {
-    try { localStorage.setItem(WHATS_NEW_SEEN_KEY, String(WHATS_NEW_LATEST_ID)); } catch {}
-    setSeenId(WHATS_NEW_LATEST_ID);
-  };
-
-  return (
-    <Link href="/whats-new" onClick={markSeen} aria-label={t("What's new")}
-      className="relative flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-      style={{ width: 36, height: 36 }}>
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2l2.09 6.26L20 10l-5.91 1.74L12 18l-2.09-6.26L4 10l5.91-1.74L12 2z" />
-      </svg>
-      {hasUnseen && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white" />}
-    </Link>
-  );
-}
-
 // Every page, and every named feature/action on those pages, so typing "approve" or
-// "budget" finds the right place even if the user doesn't know which page it lives on.
+// "allocate" finds the right place even if the manager doesn't know which page it lives on.
 const SEARCH_INDEX = [
-  { label: 'Dashboard', href: '/dashboard', section: 'Page', keywords: 'home overview pending leave budget requests allocation' },
-  { label: 'Team Management', href: '/team', section: 'Page', keywords: 'team staff members direct reports' },
-  { label: 'Approvals', href: '/approvals', section: 'Page', keywords: 'approve reject leave budget requests history bulk' },
-  { label: 'Progress', href: '/project-codes', section: 'Page', keywords: 'projects progress logs utilization' },
-  { label: 'Calendar', href: '/calendar', section: 'Page', keywords: 'public holidays singapore who is on leave' },
-  { label: "What's new", href: '/whats-new', section: 'Page', keywords: 'updates release notes changes' },
-  { label: 'Leave Requests', href: '/approvals', section: 'Action', keywords: 'approve reject leave time off undo' },
-  { label: 'Budget Requests', href: '/approvals', section: 'Action', keywords: 'approve reject additional hours budget' },
-  { label: 'Bulk Approve', href: '/approvals', section: 'Action', keywords: 'select all approve several leave' },
-  { label: 'History', href: '/approvals', section: 'Section', keywords: 'past decisions approved rejected edit' },
-  { label: 'Quick Allocation', href: '/dashboard', section: 'Action', keywords: 'allocate hours staff project per week' },
-  { label: 'Add staff to team', href: '/team', section: 'Action', keywords: 'link unlinked staff direct report' },
-  { label: 'Assign staff to project', href: '/team', section: 'Action', keywords: 'project code assignment' },
-  { label: 'Progress logs', href: '/project-codes', section: 'Action', keywords: 'export csv logs staff project' },
-  { label: 'Change Password', href: '/profile', section: 'Action', keywords: 'password security account own my' },
-  { label: 'Remembered devices', href: '/profile', section: 'Action', keywords: 'remember me sign out devices' },
+  { label: 'Dashboard', href: '/dashboard', keywords: 'home overview welcome' },
+  { label: 'Team Management', href: '/team', keywords: 'staff members people workload hours' },
+  { label: 'Approvals', href: '/approvals', keywords: 'approve reject review pending requests' },
+  { label: 'Progress', href: '/project-codes', keywords: 'project codes progress budget hours' },
+  { label: 'Calendar', href: '/calendar', keywords: 'public holidays who is on leave team out of office' },
+  { label: 'Settings', href: '/profile', keywords: 'account settings password change devices' },
+  { label: 'Leave Requests', href: '/approvals?tab=LEAVE', keywords: 'leave approve reject annual sick emergency mc' },
+  { label: 'Budget Requests', href: '/approvals?tab=BUDGET', keywords: 'budget hours approve reject' },
+  { label: 'Expense Claims', href: '/approvals?tab=CLAIMS', keywords: 'claims expense receipt reimbursement approve' },
+  { label: 'Approval History', href: '/approvals?tab=HISTORY', keywords: 'history past decisions undo' },
+  { label: 'Quick Allocation', href: '/dashboard#allocate', keywords: 'allocate staff project hours per week assign' },
+  { label: 'Change Password', href: '/profile', keywords: 'password security account reset' },
 ];
 
-// Bolds/darkens the fragment of the label that actually matched what was typed and leaves
-// the rest muted, so the row itself explains why it matched — no separate tag needed. When
-// the match only came from a hidden keyword (not present in the label text), there's nothing
-// to localize, so the whole label renders at normal weight instead of looking half-empty.
+// Bolds/darkens the part of the label that matched what was typed and leaves the rest muted,
+// so the row itself explains why it matched.
 function HighlightedLabel({ label, query }) {
   const { t } = useT();
   if (!query) return <span>{t(label)}</span>;
@@ -116,17 +83,17 @@ function SearchBox() {
 
   return (
     <div className="relative" ref={boxRef}>
-      <div className="flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 max-w-md">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 flex-shrink-0">
+      <div className="flex items-center gap-3 rounded-2xl bg-white border border-slate-100 shadow-[0_1px_2px_rgba(15,23,42,0.03)] px-4 max-w-xl focus-within:ring-2 focus-within:ring-blue-500" style={{ height: 48 }}>
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 flex-shrink-0" aria-hidden="true">
           <circle cx="11" cy="11" r="8" />
           <line x1="21" y1="21" x2="16.65" y2="16.65" />
         </svg>
-        <input type="text" placeholder={t("Search")}
+        <input type="text" placeholder={t("Search pages and actions, e.g. approve leave")} aria-label={t("Search")}
           value={query}
           onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
           onFocus={() => setOpen(true)}
           onKeyDown={onKeyDown}
-          className="w-full bg-transparent text-sm text-slate-700 placeholder-slate-400 focus:outline-none" />
+          className="w-full bg-transparent text-sm text-slate-900 placeholder-slate-400 focus:outline-none" />
       </div>
       {open && q && (
         <div className="absolute left-0 top-full mt-2 w-80 rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30 max-h-80 overflow-y-auto">
@@ -148,12 +115,16 @@ function SearchBox() {
   );
 }
 
-export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
+export default function TopBar({ onMenuClick, menuExpanded }) {
   const { t } = useT();
   const router = useRouter();
+  const pathname = usePathname();
   const [user, setUser] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notifOpen, setNotifOpen] = useState(false);
+  const [pending, setPending] = useState(null); // { leave, budget, claims }
   const menuRef = useRef(null);
+  const notifRef = useRef(null);
 
   useEffect(() => {
     try {
@@ -162,9 +133,25 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
     } catch {}
   }, []);
 
+  // Requests waiting for this manager. Refreshed on every page change, so the count drops as
+  // soon as the manager has worked through them on Approvals and moves on.
+  useEffect(() => {
+    if (!user?.user_id) return;
+    const base = process.env.NEXT_PUBLIC_API_BASE_URL || 'https://hr-backend-qjww.onrender.com';
+    const count = (res) => (res?.data?.data || []).length;
+    Promise.all([
+      axios.get(`${base}/api/v1/manager/${user.user_id}/leave-pending`).catch(() => null),
+      axios.get(`${base}/api/v1/projects/budget-requests?reviewerId=${user.user_id}`).catch(() => null),
+      axios.get(`${base}/api/v1/claims/manager-pending`, { headers: authHeaders() }).catch(() => null),
+    ]).then(([leaveRes, budgetRes, claimsRes]) => {
+      setPending({ leave: count(leaveRes), budget: count(budgetRes), claims: count(claimsRes) });
+    });
+  }, [user?.user_id, pathname]);
+
   useEffect(() => {
     const onClickOutside = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
+      if (notifRef.current && !notifRef.current.contains(e.target)) setNotifOpen(false);
     };
     document.addEventListener('mousedown', onClickOutside);
     return () => document.removeEventListener('mousedown', onClickOutside);
@@ -176,44 +163,70 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
     router.push('/');
   };
 
-  const displayName = user?.full_name || deriveNameFromEmail(user?.email) || 'Manager';
+  const displayName = deriveNameFromEmail(user?.email) || user?.full_name || 'Manager';
   const initials = displayName.split(' ').filter(Boolean).slice(0, 2).map((n) => n[0].toUpperCase()).join('') || 'M';
+  const totalPending = pending ? pending.leave + pending.budget + pending.claims : 0;
+  const notifRows = [
+    { label: t("Leave requests"), count: pending?.leave || 0, href: '/approvals?tab=LEAVE' },
+    { label: t("Budget requests"), count: pending?.budget || 0, href: '/approvals?tab=BUDGET' },
+    { label: t("Expense claims"), count: pending?.claims || 0, href: '/approvals?tab=CLAIMS' },
+  ];
 
   return (
-    <div className="sticky top-0 z-20 px-8 pt-4 pb-2 bg-white">
-      <div className="flex items-center gap-3 rounded-full bg-white border border-slate-200 shadow-sm px-4 py-2.5">
-        {/* Hamburger */}
-        <button type="button" onClick={onMenuClick} aria-label={t(menuLabel)} title={t(menuLabel)}
-          className="flex-shrink-0 flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-          style={{ width: 36, height: 36 }}>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <div className="sticky top-0 z-20 px-6 pt-4 pb-3 sm:px-8" style={{ background: '#F7F9FD' }}>
+      <div className="flex items-center gap-3">
+        {/* Menu: collapses/expands the rail on desktop, opens the drawer on small screens */}
+        <button type="button" onClick={onMenuClick} aria-label={t("Toggle menu")} aria-expanded={menuExpanded}
+          className="flex-shrink-0 flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+          style={{ width: 40, height: 40 }}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
             <path d="M4 6h16M4 12h16M4 18h16" />
           </svg>
         </button>
 
-        {/* Search */}
         <div className="flex-1 min-w-0">
           <SearchBox />
         </div>
 
-        {/* Right icons */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          <WhatsNewButton />
-          {/* Notification bell */}
-          <Link href="/approvals" aria-label={t("Notifications")} title={t("Notifications")}
-            className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-            style={{ width: 36, height: 36 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
-              <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-            </svg>
-          </Link>
+          {/* Notifications: requests waiting for review */}
+          <div className="relative" ref={notifRef}>
+            <button type="button" onClick={() => setNotifOpen((v) => !v)}
+              aria-label={totalPending > 0 ? t("Notifications, {totalPending} waiting for review", { totalPending: totalPending }) : t("Notifications")}
+              className="relative flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+              style={{ width: 40, height: 40 }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" />
+                <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+              </svg>
+              {totalPending > 0 && (
+                <span className="absolute top-1 right-1 flex min-w-[18px] h-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-[#F7F9FD]">
+                  {totalPending > 99 ? '99+' : totalPending}
+                </span>
+              )}
+            </button>
+            {notifOpen && (
+              <div className="absolute right-0 mt-2 w-72 rounded-2xl border border-slate-200 bg-white shadow-lg p-2 z-30">
+                <p className="px-3 pt-2 pb-1 text-sm font-semibold text-slate-900">{t("Waiting for your review")}</p>
+                {pending === null ? (
+                  <p className="px-3 py-3 text-xs text-slate-400">{t("Loading…")}</p>
+                ) : totalPending === 0 ? (
+                  <p className="px-3 py-3 text-xs text-slate-500">{t("You're all caught up.")}</p>
+                ) : notifRows.map((row) => (
+                  <Link key={row.label} href={row.href} onClick={() => setNotifOpen(false)}
+                    className="flex items-center justify-between rounded-xl px-3 py-2.5 text-sm text-slate-700 hover:bg-slate-50">
+                    {t(row.label)}
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${row.count > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-slate-100 text-slate-500'}`}>{row.count}</span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </div>
 
-          {/* Calendar shortcut */}
           <Link href="/calendar" aria-label={t("Calendar")}
-            className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100"
-            style={{ width: 36, height: 36 }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            className="flex items-center justify-center rounded-full text-slate-500 transition hover:bg-white"
+            style={{ width: 40, height: 40 }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
               <rect x="3" y="4" width="18" height="18" rx="2" />
               <line x1="16" y1="2" x2="16" y2="6" />
               <line x1="8" y1="2" x2="8" y2="6" />
@@ -221,25 +234,28 @@ export default function TopBar({ onMenuClick, menuLabel = 'Toggle menu' }) {
             </svg>
           </Link>
 
-          <div className="w-px self-stretch bg-slate-200 mx-1" />
+          <div className="w-px h-6 bg-slate-200 mx-2" />
 
           {/* Avatar + name dropdown */}
           <div className="relative" ref={menuRef}>
             <button type="button" onClick={() => setMenuOpen((v) => !v)}
-              className="flex items-center gap-2 rounded-full pl-1 pr-2 py-1 transition hover:bg-slate-100">
+              className="flex items-center gap-2.5 rounded-full pl-1 pr-2 py-1 transition hover:bg-white">
               <div className="flex items-center justify-center rounded-full text-white text-xs font-bold flex-shrink-0"
-                style={{ width: 30, height: 30, background: '#1a3a8f' }}>
+                style={{ width: 36, height: 36, background: '#1a3a8f', boxShadow: '0 0 0 3px #f0c9dc' }}>
                 {initials}
               </div>
-              <span className="hidden sm:block text-sm font-semibold text-slate-800 truncate max-w-[120px]">{displayName}</span>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 flex-shrink-0">
+              <span className="hidden sm:flex flex-col items-start leading-tight">
+                <span className="text-sm font-semibold text-slate-800 truncate max-w-[120px]">{displayName}</span>
+                <span className="text-xs text-slate-500">{t("Manager")}</span>
+              </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-slate-400 flex-shrink-0" aria-hidden="true">
                 <polyline points="6 9 12 15 18 9" />
               </svg>
             </button>
             {menuOpen && (
               <div className="absolute right-0 mt-2 w-48 rounded-2xl border border-slate-200 bg-white shadow-lg py-2 z-30">
                 <Link href="/profile" onClick={() => setMenuOpen(false)}
-                  className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Settings")}</Link>
+                  className="block px-4 py-2 text-sm text-slate-700 hover:bg-slate-50">{t("Profile")}</Link>
                 <button type="button" onClick={handleLogout}
                   className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50">{t("Log out")}</button>
               </div>
