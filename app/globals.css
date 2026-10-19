@@ -60,7 +60,8 @@ body {
   background-color: #1a3a8f;
 }
 
-/* Hides the native scrollbar on elements that still scroll (the sidebar rail). */
+/* Hides the scrollbar on a list that still scrolls (the sidebar tabs on a short screen),
+   same as the Staff and HR portals. */
 .hide-native-scrollbar {
   scrollbar-width: none;
 }
