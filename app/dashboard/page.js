@@ -350,11 +350,11 @@ export default function ManagerDashboard() {
             </svg>
             <div className="relative max-w-lg">
               <p className="text-xs font-bold uppercase tracking-[0.28em] text-[#aab8e0]">{todayLabel || 'Manager Dashboard'}</p>
-              <h1 className="mt-3 text-4xl font-extrabold tracking-tight">{greeting}, {firstName}</h1>
+              <h1 className="mt-3 text-4xl font-extrabold tracking-tight">{t(greeting)}, {firstName}</h1>
               <p className="mt-3 text-sm text-[#d6def5]">
                 {!loaded ? t("Checking for requests…")
                   : totalPending === 0 ? t("You’re all caught up. Nothing is waiting for your review.")
-                    : t("{totalPending} {v} waiting for review.", { totalPending: totalPending, v: totalPending === 1 ? 'request from your team is' : 'requests from your team are' })}
+                    : (totalPending === 1 ? t("1 request from your team is waiting for review.") : t("{totalPending} requests from your team are waiting for review.", { totalPending: totalPending }))}
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <button type="button" onClick={() => goToApprovals(pendingLeave.length === 0 && pendingBudget.length > 0 ? 'BUDGET' : 'LEAVE')}
