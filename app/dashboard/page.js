@@ -4,7 +4,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import { formatLeaveDate } from '../leaveFormat';
-import { useConfirm } from '../ConfirmDialog';
+import { useConfirm } from '../ConfirmDialog';
+import ComingUp from '../ComingUp';
 
 function deriveNameFromEmail(email) {
   return String(email || '')
@@ -382,6 +383,8 @@ export default function ManagerDashboard() {
               </button>
             ))}
           </div>
+
+          <ComingUp user={sessionUser} />
 
           {/* Waiting for you */}
           <section ref={approvalsRef} className="flex scroll-mt-24 flex-col gap-4">
