@@ -120,7 +120,8 @@ export default function TeamPage() {
         return roles.some((r) => String(r || '').toLowerCase() === 'staff');
       });
       setAllStaff(all);
-      setMyTeam(all.filter((s) => String(s.supervisor_id || '') === mid));
+      // A manager is never in their own team: their leave goes to their own supervisor, or HR.
+      setMyTeam(all.filter((s) => String(s.supervisor_id || '') === mid && s.user_id !== mid));
       setProjects(projectsRes.data.data || []);
       setAttendanceLogs(attendRes.data.data || []);
       setProgressLogs(progressRes.data.data || []);
@@ -214,7 +215,7 @@ export default function TeamPage() {
   });
   Object.keys(membersByProject).forEach((code) => { membersByProject[code] = membersByProject[code].size; });
 
-  const unlinkedStaff = allStaff.filter((s) => String(s.supervisor_id || '') !== managerId);
+  const unlinkedStaff = allStaff.filter((s) => String(s.supervisor_id || '') !== managerId && s.user_id !== managerId);
 
   return (
     <div className="p-8 space-y-10">
