@@ -93,6 +93,9 @@ export default function ManagerDashboard() {
   const [activeHistoryType, setActiveHistoryType] = useState('LEAVE');
   const [projects, setProjects] = useState([]);
   const [staffList, setStaffList] = useState([]);
+  // The manager's own team: everyone whose supervisor is this manager, whatever their role (same
+  // as the Team page). Team workload shows only them.
+  const [teamList, setTeamList] = useState([]);
   const [workloadMap, setWorkloadMap] = useState({});
   const [allocation, setAllocation] = useState({ userId: '', projectCode: '', hours: '' });
   const [allocSubmitting, setAllocSubmitting] = useState(false);
@@ -167,6 +170,7 @@ export default function ManagerDashboard() {
           setPendingBudget(budgetRes.data.data || []);
           setProjects(projectsRes.data.data || []);
           setStaffList((staffRes.data.data || []).filter((u) => u.user_role?.toLowerCase() === 'staff'));
+          setTeamList((staffRes.data.data || []).filter((u) => String(u.supervisor_id || '') === String(managerId) && u.user_id !== managerId));
           setHistoryLeave((histLeaveRes.data.data || []).filter((l) => l.status !== 'PENDING'));
           setHistoryBudget(histBudgetRes.data.data || []);
           const wMap = {};
@@ -180,6 +184,7 @@ export default function ManagerDashboard() {
           setPendingBudget([]);
           setProjects([]);
           setStaffList([]);
+          setTeamList([]);
           setHistoryLeave([]);
           setHistoryBudget([]);
           setLoaded(true);
@@ -322,8 +327,8 @@ export default function ManagerDashboard() {
 
   const totalPending = pendingLeave.length + pendingBudget.length;
 
-  // Staff with the most hours allocated first, so anyone near or over capacity is at the top.
-  const workloadRows = staffList
+  // The manager's team, most hours allocated first, so anyone near or over capacity is at the top.
+  const workloadRows = teamList
     .map((s) => ({ id: s.user_id, name: s.full_name || s.email, hours: workloadMap[s.user_id] || 0 }))
     .sort((a, b) => b.hours - a.hours)
     .slice(0, 6);
@@ -536,7 +541,7 @@ export default function ManagerDashboard() {
             {!loaded ? (
               <p className="py-4 text-sm text-slate-400">Loading…</p>
             ) : workloadRows.length === 0 ? (
-              <p className="py-4 text-sm text-slate-400">No staff to show yet.</p>
+              <p className="py-4 text-sm text-slate-400">No one reports to you yet. Add people on the Team page.</p>
             ) : (
               <ul className="flex flex-col gap-3.5">
                 {workloadRows.map((w) => {
