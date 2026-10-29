@@ -51,6 +51,17 @@ function formatDateTime(d) {
   return new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Singapore' });
 }
 
+// Leave by the hour (part of one day) has leave_hours; full-day leave doesn't.
+const leaveHours = (item) => (item?.leave_hours != null ? Number(item.leave_hours) : null);
+// "2 h", or "3 Days" for full-day leave; null if the dates can't be read.
+function leaveDuration(item) {
+  if (leaveHours(item) != null) return `${leaveHours(item)} h`;
+  const d = daysBetween(item.start_date, item.end_date);
+  return d ? `${d} Day${d !== 1 ? 's' : ''}` : null;
+}
+// "12 Nov 2026" for leave by the hour (one day), otherwise "12 Nov 2026 → 14 Nov 2026".
+const leaveDates = (item, fmt) => (leaveHours(item) != null ? fmt(item.start_date) : `${fmt(item.start_date)} → ${fmt(item.end_date)}`);
+
 function daysBetween(start, end) {
   if (!start || !end) return null;
   const s = new Date(String(start).slice(0, 10));
@@ -439,7 +450,7 @@ function ApprovalsContent() {
               const id = currentIdOf(item);
               const isLeave = activeTab === 'LEAVE';
               const isClaim = activeTab === 'CLAIMS';
-              const duration = isLeave ? daysBetween(item.start_date, item.end_date) : null;
+              const duration = isLeave ? leaveDuration(item) : null;
               const balance = isLeave ? balanceMap[item.user_id] : null;
               return (
                 <div key={id} className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
@@ -474,8 +485,8 @@ function ApprovalsContent() {
                         ) : isLeave ? (
                           <>
                             <p className="mt-1 text-sm text-slate-500">
-                              {item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
-                              {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}
+                              {item.category} • {leaveDates(item, formatDateOnly)}
+                              {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration})</span>}
                             </p>
                             {balance && (
                               <p className="mt-1 text-xs text-slate-500">
@@ -577,7 +588,7 @@ function ApprovalsContent() {
                 const item = row.raw;
                 const isLeave = row.type === 'LEAVE';
                 const isClaim = row.type === 'CLAIM';
-                const duration = isLeave ? daysBetween(item.start_date, item.end_date) : null;
+                const duration = isLeave ? leaveDuration(item) : null;
                 const decidedOn = formatDateTime(isLeave ? item.updated_at : isClaim ? item.manager_reviewed_at : item.reviewed_at);
                 const reviewerName = isClaim ? item.manager_reviewer_name : item.reviewer_name;
                 const remarks = isClaim ? item.manager_remarks : item.reviewer_remarks;
@@ -590,8 +601,8 @@ function ApprovalsContent() {
                         </p>
                         <p className="mt-1 text-base font-semibold text-slate-900">
                           {isLeave
-                            ? <>{item.category} • {formatDateOnly(item.start_date)} → {formatDateOnly(item.end_date)}
-                                {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration} Day{duration !== 1 ? 's' : ''})</span>}</>
+                            ? <>{item.category} • {leaveDates(item, formatDateOnly)}
+                                {duration && <span className="ml-1.5 font-semibold text-[#1540A8]">({duration})</span>}</>
                             : isClaim
                               ? <>{item.merchant} • {formatDateOnly(item.purchase_date)} • {money(item.currency, item.total_amount)}</>
                               : <>{item.project_name || item.project_code} • {item.requested_hours} hrs</>}
@@ -655,8 +666,10 @@ function ApprovalsContent() {
                 <><strong>{reviewModal.item.project_code}</strong> — {reviewModal.item.project_name || reviewModal.item.project_code} • {reviewModal.item.requested_hours} hrs requested</>
               ) : (
                 <><strong>{reviewModal.item.full_name}</strong> — {reviewModal.item.category} •{' '}
-                START DATE: {formatDateOnly(reviewModal.item.start_date)} - END DATE: {formatDateOnly(reviewModal.item.end_date)}
-                {(() => { const d = daysBetween(reviewModal.item.start_date, reviewModal.item.end_date); return d ? ` (${d} Day${d !== 1 ? 's' : ''})` : ''; })()}
+                {leaveHours(reviewModal.item) != null
+                  ? `DATE: ${formatDateOnly(reviewModal.item.start_date)}`
+                  : `START DATE: ${formatDateOnly(reviewModal.item.start_date)} - END DATE: ${formatDateOnly(reviewModal.item.end_date)}`}
+                {leaveDuration(reviewModal.item) ? ` (${leaveDuration(reviewModal.item)})` : ''}
                 </>
               )}
             </p>
